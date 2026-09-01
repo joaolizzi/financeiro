@@ -1,0 +1,30 @@
+import React, { useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { Wallet, Plus, ArrowUpRight, ArrowDownRight, LockKeyhole, Trash2, LogOut } from 'lucide-react';
+import './styles.css';
+
+const categories = ['Moradia','Alimentação','Transporte','Lazer','Compras','Contas','Assinaturas','Investimentos','Outros'];
+const initialExpenses = [
+  { id: 1, description: 'Mercado', value: 286.40, category: 'Alimentação', date: '01/09/2026', type: 'variável' },
+  { id: 2, description: 'Internet', value: 99.90, category: 'Contas', date: '01/09/2026', type: 'fixo' },
+  { id: 3, description: 'Academia', value: 89.90, category: 'Assinaturas', date: '02/09/2026', type: 'fixo' }
+];
+const money = v => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+function Login({ onLogin }) {
+  const [user,setUser]=useState(''); const [pass,setPass]=useState(''); const [error,setError]=useState('');
+  function submit(e){e.preventDefault(); if(user==='joao' && pass==='admin'){onLogin()} else setError('Usuário ou senha inválidos.');}
+  return <main className="login-page"><section className="login-card"><div className="brand"><div className="logo"><Wallet size={22}/></div><span>Finan<span className="accent">.A</span></span></div><div className="lock"><LockKeyhole size={24}/></div><h1>Bem-vindo de volta</h1><p>Acesse seu controle financeiro.</p><form onSubmit={submit}><label>Usuário</label><input value={user} onChange={e=>setUser(e.target.value)} placeholder="Seu usuário" autoComplete="username"/><label>Senha</label><input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Sua senha" autoComplete="current-password"/>{error&&<div className="error">{error}</div>}<button className="primary">Entrar</button></form><small>Área privada • acesso pessoal</small></section></main>
+}
+
+function App(){
+ const [logged,setLogged]=useState(false); const [expenses,setExpenses]=useState(initialExpenses); const [income,setIncome]=useState(3000); const [show,setShow]=useState(false);
+ const total=useMemo(()=>expenses.reduce((s,e)=>s+e.value,0),[expenses]); const fixed=expenses.filter(e=>e.type==='fixo').reduce((s,e)=>s+e.value,0); const balance=income-total; const percent=income?Math.min(total/income*100,100):0;
+ function addExpense(e){e.preventDefault();const f=new FormData(e.currentTarget);setExpenses([{id:Date.now(),description:f.get('description'),value:Number(f.get('value')),category:f.get('category'),date:f.get('date').split('-').reverse().join('/'),type:f.get('type')},...expenses]);setShow(false);e.currentTarget.reset()}
+ if(!logged)return <Login onLogin={()=>setLogged(true)}/>;
+ return <div className="app"><header><div className="brand"><div className="logo"><Wallet size={20}/></div><span>Finan<span className="accent">.A</span></span></div><div className="header-actions"><span className="month">Setembro 2026</span><button className="icon-btn" onClick={()=>setLogged(false)} title="Sair"><LogOut size={18}/></button></div></header><main className="content"><div className="top"><div><span className="eyebrow">VISÃO GERAL</span><h1>Suas finanças</h1><p>Acompanhe seus gastos e mantenha o controle.</p></div><button className="primary add" onClick={()=>setShow(true)}><Plus size={18}/> Novo gasto</button></div>
+ <section className="cards"><article className="card"><span>Renda mensal</span><strong>{money(income)}</strong><div className="muted">Definida para este mês</div></article><article className="card"><span>Total gasto</span><strong>{money(total)}</strong><div className="danger"><ArrowDownRight size={16}/> {percent.toFixed(1)}% da renda</div></article><article className="card highlight"><span>Saldo disponível</span><strong>{money(balance)}</strong><div className="positive"><ArrowUpRight size={16}/> {balance>=0?'Você está dentro do orçamento':'Acima da renda'}</div></article></section>
+ <section className="grid"><article className="panel"><div className="panel-head"><div><h2>Gastos recentes</h2><p>Seus últimos lançamentos</p></div><button className="link" onClick={()=>setShow(true)}>Adicionar</button></div>{expenses.length===0?<div className="empty">Nenhum gasto cadastrado.</div>:<div className="expense-list">{expenses.slice(0,6).map(x=><div className="expense" key={x.id}><div className="cat-dot">{x.category[0]}</div><div className="expense-info"><b>{x.description}</b><small>{x.category} • {x.date}</small></div><strong>- {money(x.value)}</strong><button className="delete" onClick={()=>setExpenses(expenses.filter(y=>y.id!==x.id))}><Trash2 size={16}/></button></div>)}</div>}</article><article className="panel"><div className="panel-head"><div><h2>Resumo</h2><p>Distribuição deste mês</p></div></div><div className="progress-wrap"><div className="progress-label"><span>Renda utilizada</span><b>{percent.toFixed(0)}%</b></div><div className="progress"><i style={{width:`${percent}%`}}/></div><div className="summary"><span>Gastos fixos <b>{money(fixed)}</b></span><span>Gastos variáveis <b>{money(total-fixed)}</b></span><span>Restante <b>{money(Math.max(balance,0))}</b></span></div></div></article></section>
+ </main>{show&&<div className="modal-bg" onMouseDown={e=>e.target===e.currentTarget&&setShow(false)}><form className="modal" onSubmit={addExpense}><div className="modal-head"><div><h2>Novo gasto</h2><p>Adicione uma despesa ao mês.</p></div><button type="button" className="close" onClick={()=>setShow(false)}>×</button></div><label>Descrição</label><input name="description" required placeholder="Ex.: Mercado"/><label>Valor</label><input name="value" type="number" step="0.01" min="0.01" required placeholder="0,00"/><div className="two"><div><label>Categoria</label><select name="category">{categories.map(c=><option key={c}>{c}</option>)}</select></div><div><label>Tipo</label><select name="type"><option value="variável">Variável</option><option value="fixo">Fixo</option></select></div></div><label>Data</label><input name="date" type="date" required defaultValue="2026-09-01"/><button className="primary">Salvar gasto</button></form></div>}</div>
+}
+createRoot(document.getElementById('root')).render(<App/>);
