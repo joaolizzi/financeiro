@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {ArrowDownToLine,ArrowUpFromLine,BriefcaseBusiness,Landmark,Plus,RefreshCw,WalletCards} from 'lucide-react';
+import {BriefcaseBusiness,Landmark,RefreshCw,WalletCards} from 'lucide-react';
 import {supabase} from '../lib/supabase';
+import './MoneyBuckets.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const TYPES=[['disponivel','Disponível','Dinheiro para gastos do dia a dia',WalletCards],['guardado','Guardado','Reserva e dinheiro separado',Landmark],['investimentos','Investimentos','Patrimônio investido',BriefcaseBusiness]];
