@@ -1,13 +1,14 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {BarChart3,TrendingDown,TrendingUp} from 'lucide-react';
 import {supabase} from '../lib/supabase';
+import './FinancialEvolution.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const monthName=(m,y)=>new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
 
-export default function FinancialEvolution({userId,month,year}){
+export default function FinancialEvolution(){
  const[data,setData]=useState([]),[loading,setLoading]=useState(true);
- useEffect(()=>{let active=true;async function load(){setLoading(true);const months=[];for(let i=5;i>=0;i--){let m=month-i,y=year;while(m<=0){m+=12;y--}months.push({month:m,year:y})}const first=months[0],last=months[5],start=`${first.year}-${String(first.month).padStart(2,'0')}-01`,next=last.month===12?1:last.month+1,ny=last.month===12?last.year+1:last.year,end=`${ny}-${String(next).padStart(2,'0')}-01`;const[g,r]=await Promise.all([supabase.from('gastos').select('valor,data').eq('user_id',userId).gte('data',start).lt('data',end),supabase.from('rendas').select('valor,mes,ano').eq('user_id',userId).gte('ano',first.year).lte('ano',last.year)]);if(active){const rows=months.map(x=>{const gastos=(g.data||[]).filter(e=>{const d=new Date(`${e.data}T12:00:00`);return d.getMonth()+1===x.month&&d.getFullYear()===x.year}).reduce((s,e)=>s+Number(e.valor||0),0);const renda=(r.data||[]).find(e=>Number(e.mes)===x.month&&Number(e.ano)===x.year);return {...x,gastos,renda:Number(renda?.valor||0)}});setData(rows);setLoading(false)}}load();return()=>{active=false}},[userId,month,year]);
+ useEffect(()=>{let active=true;async function load(){const{data:{user}}=await supabase.auth.getUser();if(!user){setLoading(false);return}const now=new Date(),month=now.getMonth()+1,year=now.getFullYear(),months=[];for(let i=5;i>=0;i--){let m=month-i,y=year;while(m<=0){m+=12;y--}months.push({month:m,year:y})}const first=months[0],last=months[5],start=`${first.year}-${String(first.month).padStart(2,'0')}-01`,next=last.month===12?1:last.month+1,ny=last.month===12?last.year+1:last.year,end=`${ny}-${String(next).padStart(2,'0')}-01`;const[g,r]=await Promise.all([supabase.from('gastos').select('valor,data').eq('user_id',user.id).gte('data',start).lt('data',end),supabase.from('rendas').select('valor,mes,ano').eq('user_id',user.id).gte('ano',first.year).lte('ano',last.year)]);if(active){const rows=months.map(x=>{const gastos=(g.data||[]).filter(e=>{const d=new Date(`${e.data}T12:00:00`);return d.getMonth()+1===x.month&&d.getFullYear()===x.year}).reduce((s,e)=>s+Number(e.valor||0),0);const renda=(r.data||[]).find(e=>Number(e.mes)===x.month&&Number(e.ano)===x.year);return {...x,gastos,renda:Number(renda?.valor||0)}});setData(rows);setLoading(false)}}load();return()=>{active=false}},[]);
  const max=useMemo(()=>Math.max(...data.flatMap(x=>[x.gastos,x.renda]),1),[data]);
  const totals=useMemo(()=>data.reduce((a,x)=>({gastos:a.gastos+x.gastos,renda:a.renda+x.renda}),{gastos:0,renda:0}),[data]);
  const trend=data.length>1?data[data.length-1].gastos-data[data.length-2].gastos:0;
