@@ -1,0 +1,16 @@
+import React,{useEffect,useMemo,useState} from 'react';
+import {BarChart3,TrendingDown,TrendingUp} from 'lucide-react';
+import {supabase} from '../lib/supabase';
+
+const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const monthName=(m,y)=>new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
+
+export default function FinancialEvolution({userId,month,year}){
+ const[data,setData]=useState([]),[loading,setLoading]=useState(true);
+ useEffect(()=>{let active=true;async function load(){setLoading(true);const months=[];for(let i=5;i>=0;i--){let m=month-i,y=year;while(m<=0){m+=12;y--}months.push({month:m,year:y})}const first=months[0],last=months[5],start=`${first.year}-${String(first.month).padStart(2,'0')}-01`,next=last.month===12?1:last.month+1,ny=last.month===12?last.year+1:last.year,end=`${ny}-${String(next).padStart(2,'0')}-01`;const[g,r]=await Promise.all([supabase.from('gastos').select('valor,data').eq('user_id',userId).gte('data',start).lt('data',end),supabase.from('rendas').select('valor,mes,ano').eq('user_id',userId).gte('ano',first.year).lte('ano',last.year)]);if(active){const rows=months.map(x=>{const gastos=(g.data||[]).filter(e=>{const d=new Date(`${e.data}T12:00:00`);return d.getMonth()+1===x.month&&d.getFullYear()===x.year}).reduce((s,e)=>s+Number(e.valor||0),0);const renda=(r.data||[]).find(e=>Number(e.mes)===x.month&&Number(e.ano)===x.year);return {...x,gastos,renda:Number(renda?.valor||0)}});setData(rows);setLoading(false)}}load();return()=>{active=false}},[userId,month,year]);
+ const max=useMemo(()=>Math.max(...data.flatMap(x=>[x.gastos,x.renda]),1),[data]);
+ const totals=useMemo(()=>data.reduce((a,x)=>({gastos:a.gastos+x.gastos,renda:a.renda+x.renda}),{gastos:0,renda:0}),[data]);
+ const trend=data.length>1?data[data.length-1].gastos-data[data.length-2].gastos:0;
+ if(loading)return <section className="panel evolution-panel"><div className="panel-head"><div><h2>Evolução financeira</h2><p>Últimos 6 meses</p></div><BarChart3 size={20}/></div><div className="empty compact">Carregando histórico...</div></section>;
+ return <section className="panel evolution-panel"><div className="panel-head"><div><h2>Evolução financeira</h2><p>Entradas e gastos dos últimos 6 meses</p></div><BarChart3 size={20}/></div><div className="evolution-summary"><span>Total recebido <b>{money(totals.renda)}</b></span><span>Total gasto <b>{money(totals.gastos)}</b></span><span className={trend>0?'danger':'positive'}>{trend>0?<TrendingUp size={15}/>:<TrendingDown size={15}/>} {trend===0?'Sem mudança':`${trend>0?'Aumento':'Queda'} de ${money(Math.abs(trend))} no último mês`}</span></div><div className="evolution-chart" aria-label="Gráfico dos últimos seis meses">{data.map(x=><div className="evolution-month" key={`${x.month}-${x.year}`}><div className="evolution-bars"><i className="income-bar" style={{height:`${x.renda/max*100}%`}} title={`Entrada: ${money(x.renda)}`}/><i className="expense-bar" style={{height:`${x.gastos/max*100}%`}} title={`Gastos: ${money(x.gastos)}`}/></div><b>{monthName(x.month,x.year)}</b><small>{money(x.gastos)}</small></div>)}</div><div className="chart-legend"><span><i className="legend-income"/> Entradas</span><span><i className="legend-expense"/> Gastos</span></div></section>;
+}
