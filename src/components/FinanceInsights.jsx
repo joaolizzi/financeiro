@@ -4,6 +4,7 @@ import FinancialEvolution from './FinancialEvolution';
 import AdvancedDashboard from './AdvancedDashboard';
 import DashboardCharts from './DashboardCharts';
 import MonthlyClosing from './MonthlyClosing';
+import FinancialForecast from './FinancialForecast';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
@@ -13,6 +14,7 @@ export default function FinanceInsights({expenses,income,userId,month,year}){
  const top=categories[0];
  const average=expenses.length?total/expenses.length:0;
  return <>
+  <FinancialForecast userId={userId} expenses={expenses} income={income} month={month} year={year}/>
   <MonthlyClosing userId={userId} month={month} year={year}/>
   <DashboardCharts expenses={expenses} income={income}/>
   <AdvancedDashboard userId={userId} expenses={expenses} income={income} month={month} year={year}/>
