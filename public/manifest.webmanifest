@@ -1,0 +1,27 @@
+{
+  "name": "Finanças — Controle financeiro",
+  "short_name": "Finanças",
+  "description": "Seu controle financeiro pessoal para gastos, cartões, planejamento e análises.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070b12",
+  "theme_color": "#0b0f19",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
