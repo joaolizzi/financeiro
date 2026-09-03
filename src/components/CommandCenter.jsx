@@ -1,8 +1,8 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {Search,LayoutDashboard,ReceiptText,CreditCard,Target,Sparkles,Plus,Pencil,Command,ArrowRight} from 'lucide-react';
+import {Search,LayoutDashboard,ReceiptText,CreditCard,Target,Sparkles,Plus,Pencil,Command,ArrowRight,Zap} from 'lucide-react';
 import './CommandCenter.css';
 
-export default function CommandCenter({open,onClose,onNavigate,onNewExpense,onIncome}){
+export default function CommandCenter({open,onClose,onNavigate,onNewExpense,onQuickAdd,onIncome}){
  const[q,setQ]=useState('');
  useEffect(()=>{if(open)setQ('')},[open]);
  const actions=useMemo(()=>[
@@ -11,9 +11,10 @@ export default function CommandCenter({open,onClose,onNavigate,onNewExpense,onIn
   {label:'Cartões',hint:'Faturas e limites',icon:CreditCard,run:()=>onNavigate('cards')},
   {label:'Planejamento',hint:'Metas e recorrências',icon:Target,run:()=>onNavigate('planning')},
   {label:'Análises',hint:'Insights e inteligência',icon:Sparkles,run:()=>onNavigate('insights')},
-  {label:'Novo gasto',hint:'Adicionar lançamento',icon:Plus,run:onNewExpense,accent:true},
+  {label:'Quick Add',hint:'Digite um gasto em linguagem natural',icon:Zap,run:onQuickAdd,accent:true},
+  {label:'Novo gasto',hint:'Abrir formulário completo',icon:Plus,run:onNewExpense},
   {label:'Editar renda',hint:'Atualizar renda mensal',icon:Pencil,run:onIncome}
- ],[onNavigate,onNewExpense,onIncome]);
+ ],[onNavigate,onNewExpense,onQuickAdd,onIncome]);
  const filtered=actions.filter(a=>`${a.label} ${a.hint}`.toLowerCase().includes(q.toLowerCase()));
  if(!open)return null;
  function execute(a){a.run();onClose()}
