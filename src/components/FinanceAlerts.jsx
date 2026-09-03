@@ -1,5 +1,6 @@
 import React,{useMemo} from 'react';
-import {AlertTriangle,ArrowDownRight,ArrowUpRight,CheckCircle2,Target,TrendingUp} from 'lucide-react';
+import {AlertTriangle,CheckCircle2,Target,TrendingUp} from 'lucide-react';
+import './FinanceAlerts.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
