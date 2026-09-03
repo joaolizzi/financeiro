@@ -1,0 +1,34 @@
+import React,{useRef,useState} from 'react';
+import {ArchiveRestore,Download,FileJson,FileSpreadsheet,LoaderCircle,ShieldCheck,Upload} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import {supabase} from '../lib/supabase';
+import './BackupCenter.css';
+
+const TABLES=['gastos','rendas','credit_cards','credit_card_purchases','finance_recurring','finance_subscriptions','finance_monthly_budgets','finance_limits','finance_balances','finance_transfers'];
+const LABELS={gastos:'Gastos',rendas:'Rendas',credit_cards:'Cartões',credit_card_purchases:'Compras no cartão',finance_recurring:'Recorrentes',finance_subscriptions:'Assinaturas',finance_monthly_budgets:'Orçamentos',finance_limits:'Limites',finance_balances:'Saldos',finance_transfers:'Transferências'};
+const goalKey=id=>`financeiro-goals-${id}`;
+const stamp=()=>new Date().toISOString().slice(0,10);
+function downloadBlob(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),500)}
+function cleanRows(rows,userId,{stripId=false}={}){return(rows||[]).map(row=>{const x={...row,user_id:userId};delete x.created_at;if(stripId)delete x.id;return x})}
+
+export default function BackupCenter({userId,onRestored}){
+ const[inputRef,setInputRef]=[useRef(null),null];
+ const[busy,setBusy]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState('');
+ async function collect(){const results=await Promise.all(TABLES.map(async table=>{const{data,error}=await supabase.from(table).select('*').eq('user_id',userId);return{table,data:data||[],error}}));const failed=results.find(x=>x.error);if(failed)throw new Error(`${LABELS[failed.table]}: ${failed.error.message}`);let goals=[];try{goals=JSON.parse(localStorage.getItem(goalKey(userId))||'[]')}catch{}return{format:'financas-backup',version:1,exported_at:new Date().toISOString(),data:Object.fromEntries(results.map(x=>[x.table,x.data])),local:{goals}}}
+ async function exportJson(){setBusy(true);setError('');setStatus('Preparando backup...');try{const backup=await collect();downloadBlob(JSON.stringify(backup,null,2),`financas-backup-${stamp()}.json`,'application/json');setStatus('Backup completo baixado com sucesso.')}catch(e){setError(e.message)}finally{setBusy(false)}}
+ async function exportExcel(){setBusy(true);setError('');setStatus('Montando planilha...');try{const backup=await collect(),wb=XLSX.utils.book_new();for(const table of TABLES){const rows=backup.data[table]||[];const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{info:'Sem dados'}]);XLSX.utils.book_append_sheet(wb,ws,LABELS[table].slice(0,31))}XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(backup.local.goals.length?backup.local.goals:[{info:'Sem metas locais'}]),'Metas');XLSX.writeFile(wb,`financas-export-${stamp()}.xlsx`);setStatus('Planilha completa exportada.')}catch(e){setError(e.message)}finally{setBusy(false)}}
+ async function restoreFile(e){const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);setError('');setStatus('Validando backup...');try{const backup=JSON.parse(await file.text());if(backup?.format!=='financas-backup'||!backup?.data)throw new Error('Esse arquivo não é um backup válido do Finanças.');
+  setStatus('Restaurando gastos e configurações...');
+  const simple=['gastos','finance_recurring','finance_subscriptions','finance_limits'];
+  for(const table of simple){const rows=cleanRows(backup.data[table],userId);if(rows.length){const{error}=await supabase.from(table).upsert(rows);if(error)throw new Error(`${LABELS[table]}: ${error.message}`)}}
+  const incomes=cleanRows(backup.data.rendas,userId);if(incomes.length){const{error}=await supabase.from('rendas').upsert(incomes,{onConflict:'user_id,mes,ano'});if(error)throw new Error(`Rendas: ${error.message}`)}
+  const budgets=cleanRows(backup.data.finance_monthly_budgets,userId);if(budgets.length){const{error}=await supabase.from('finance_monthly_budgets').upsert(budgets,{onConflict:'user_id,mes,ano'});if(error)throw new Error(`Orçamentos: ${error.message}`)}
+  const balances=cleanRows(backup.data.finance_balances,userId,{stripId:true});if(balances.length){const{error}=await supabase.from('finance_balances').upsert(balances,{onConflict:'user_id,tipo'});if(error)throw new Error(`Saldos: ${error.message}`)}
+  const cards=cleanRows(backup.data.credit_cards,userId);if(cards.length){const{error}=await supabase.from('credit_cards').upsert(cards);if(error)throw new Error(`Cartões: ${error.message}`)}
+  const purchases=cleanRows(backup.data.credit_card_purchases,userId);if(purchases.length){const{error}=await supabase.from('credit_card_purchases').upsert(purchases);if(error)throw new Error(`Compras no cartão: ${error.message}`)}
+  const transfers=cleanRows(backup.data.finance_transfers,userId,{stripId:true});if(transfers.length){const{error}=await supabase.from('finance_transfers').insert(transfers);if(error)throw new Error(`Transferências: ${error.message}`)}
+  if(Array.isArray(backup.local?.goals))localStorage.setItem(goalKey(userId),JSON.stringify(backup.local.goals));
+  setStatus('Backup restaurado. Seus dados foram recarregados.');onRestored?.();setTimeout(()=>window.location.reload(),600);
+ }catch(err){setError(err.message);setStatus('')}finally{setBusy(false)}}
+ return <section className="panel backup-center"><div className="backup-head"><div><span className="backup-kicker"><ShieldCheck size={12}/> SEGURANÇA DOS DADOS</span><h2>Backup e exportação</h2><p>Baixe uma cópia completa dos seus dados e restaure quando precisar.</p></div><ArchiveRestore size={22}/></div><div className="backup-grid"><button className="backup-action" disabled={busy} onClick={exportJson}><span><FileJson size={19}/></span><div><b>Backup completo</b><small>JSON para restaurar depois</small></div><Download size={15}/></button><button className="backup-action" disabled={busy} onClick={exportExcel}><span><FileSpreadsheet size={19}/></span><div><b>Exportar Excel</b><small>Planilha para consultar seus dados</small></div><Download size={15}/></button><button className="backup-action restore" disabled={busy} onClick={()=>inputRef.current?.click()}><span><Upload size={19}/></span><div><b>Restaurar backup</b><small>Importe um JSON gerado pelo Finanças</small></div><ArchiveRestore size={15}/></button><input ref={inputRef} hidden type="file" accept="application/json,.json" onChange={restoreFile}/></div><div className="backup-note"><ShieldCheck size={14}/><span>O backup inclui gastos, rendas, cartões, compras parceladas, recorrentes, assinaturas, orçamentos, limites, saldos, transferências e metas.</span></div>{busy&&<div className="backup-status"><LoaderCircle className="spin" size={14}/>{status||'Processando...'}</div>}{!busy&&status&&<div className="backup-status success">{status}</div>}{error&&<div className="error banner">{error}</div>}</section>;
+}
