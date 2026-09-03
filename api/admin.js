@@ -1,15 +1,15 @@
 import {createClient} from '@supabase/supabase-js';
 
 const url=process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL;
-const anon=process.env.SUPABASE_ANON_KEY||process.env.VITE_SUPABASE_ANON_KEY;
+const anon=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.VITE_SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY||process.env.VITE_SUPABASE_ANON_KEY;
 const service=process.env.SUPABASE_SERVICE_ROLE_KEY;
-const client=createClient(url,anon,{auth:{persistSession:false}});
-const admin=createClient(url,service,{auth:{persistSession:false}});
+const client=url&&anon?createClient(url,anon,{auth:{persistSession:false}}):null;
+const admin=url&&service?createClient(url,service,{auth:{persistSession:false}}):null;
 
 const json=(res,status,data)=>res.status(status).json(data);
 
 async function requireAdmin(req,res){
- if(!url||!anon||!service){json(res,500,{ok:false,error:'Admin API não configurada no servidor.'});return null}
+ if(!client||!admin){json(res,500,{ok:false,error:'Admin API não configurada no servidor.'});return null}
  const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
  if(!token){json(res,401,{ok:false,error:'Sessão ausente.'});return null}
  const {data:{user},error}=await client.auth.getUser(token);
