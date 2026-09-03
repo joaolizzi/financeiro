@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {supabase} from '../lib/supabase';
-import {ArrowDownRight,ArrowUpRight,CalendarDays,Gauge,Receipt,WalletCards} from 'lucide-react';
+import {ArrowDownRight,ArrowUpRight,CalendarDays,Gauge,Receipt,WalletCards,Activity,AlertTriangle} from 'lucide-react';
 import './AdvancedDashboard.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -37,6 +37,10 @@ export default function AdvancedDashboard({userId,expenses=[],income,month,year}
  const difference=total-previous.total;
  const differencePct=previous.total>0?difference/previous.total*100:null;
  const top=useMemo(()=>{const map={};expenses.forEach(e=>{map[e.categoria]=(map[e.categoria]||0)+Number(e.valor||0)});return Object.entries(map).sort((a,b)=>b[1]-a[1])[0]},[expenses]);
+ const largestExpense=useMemo(()=>expenses.reduce((max,e)=>Number(e.valor||0)>Number(max?.valor||0)?e:max,null),[expenses]);
+ const averageExpense=expenses.length?total/expenses.length:0;
+ const aboveAverage=expenses.filter(e=>Number(e.valor||0)>averageExpense).length;
+ const health=income<=0?null:savingsRate>=25?{label:'Excelente',tone:'great',score:90}:savingsRate>=10?{label:'Saudável',tone:'good',score:70}:savingsRate>=0?{label:'Atenção',tone:'warn',score:45}:{label:'Crítico',tone:'bad',score:20};
  const max=Math.max(total,previous.total,1);
  return <section className="advanced-dashboard">
   <div className="advanced-head"><div><span className="advanced-eyebrow">VISÃO GERAL</span><h2>Seu mês em números</h2><p>Indicadores para entender seu ritmo de gastos antes do fim do mês.</p></div><div className="advanced-badge"><Gauge size={15}/> {isCurrentMonth?'Acompanhamento em tempo real':'Fechamento do mês'}</div></div>
@@ -46,9 +50,15 @@ export default function AdvancedDashboard({userId,expenses=[],income,month,year}
    <article className="advanced-card"><div className="advanced-card-top"><span>Taxa de economia</span><WalletCards size={17}/></div><strong className={savingsRate<0?'negative':''}>{income>0?`${savingsRate.toFixed(1)}%`:'—'}</strong><small>{income>0?`${money(Math.max(savings,0))} restantes da renda.`:'Defina sua renda para calcular.'}</small></article>
    <article className="advanced-card"><div className="advanced-card-top"><span>Maior categoria</span><Receipt size={17}/></div><strong className="advanced-category">{top?top[0]:'—'}</strong><small>{top?money(top[1]):'Adicione gastos para descobrir.'}</small></article>
   </div>
+  <div className="advanced-mini-grid">
+   <article className="advanced-mini"><div><Activity size={16}/><span>Gasto médio</span></div><strong>{money(averageExpense)}</strong><small>por lançamento</small></article>
+   <article className="advanced-mini"><div><Receipt size={16}/><span>Maior gasto</span></div><strong>{largestExpense?money(largestExpense.valor):'—'}</strong><small>{largestExpense?.descricao||'Nenhum lançamento'}</small></article>
+   <article className="advanced-mini"><div><ArrowUpRight size={16}/><span>Acima da média</span></div><strong>{aboveAverage}</strong><small>{aboveAverage===1?'lançamento':'lançamentos'} acima do seu gasto médio</small></article>
+  </div>
   <div className="advanced-lower">
    <article className="advanced-panel"><div className="advanced-panel-head"><div><h3>Comparação com o mês anterior</h3><p>{loading?'Carregando histórico...':previous.total?'Compare seus gastos registrados.':'Ainda não há gastos no mês anterior.'}</p></div>{!loading&&previous.total>0&&<div className={difference>0?'advanced-change negative':'advanced-change positive'}>{difference>0?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {differencePct===null?'—':`${Math.abs(differencePct).toFixed(0)}%`}</div>}</div><div className="comparison"><div className="comparison-row"><div><span>Este mês</span><b>{money(total)}</b></div><div className="comparison-track"><i style={{width:`${total/max*100}%`}}/></div></div><div className="comparison-row"><div><span>Mês anterior</span><b>{money(previous.total)}</b></div><div className="comparison-track muted"><i style={{width:`${previous.total/max*100}%`}}/></div></div></div></article>
    <article className="advanced-panel forecast-panel"><div className="advanced-panel-head"><div><h3>Ritmo financeiro</h3><p>Quanto da renda já foi comprometido.</p></div></div><div className="forecast-value"><strong>{income>0?`${Math.min(total/income*100,999).toFixed(0)}%`:'—'}</strong><span>da renda utilizada</span></div><div className="forecast-track"><i style={{width:`${income?Math.min(total/income*100,100):0}%`}}/></div><div className="forecast-footer"><span>Gasto atual <b>{money(total)}</b></span><span>Saldo <b className={savings<0?'negative':''}>{money(savings)}</b></span></div></article>
   </div>
+  <article className="financial-health"><div className="health-icon"><Gauge size={19}/></div><div className="health-copy"><span>SAÚDE FINANCEIRA</span><h3>{health?health.label:'Defina sua renda'}</h3><p>{health?health.score>=70?'Você está mantendo uma boa margem entre renda e gastos.':health.score>=45?'Seu orçamento está apertado. Vale revisar os maiores gastos.':'Seus gastos estão acima da renda. Reduza despesas e reveja o orçamento.':'Informe sua renda mensal para receber uma avaliação.'}</p></div><div className="health-meter"><div><b>{health?health.score:'—'}</b><span>/ 100</span></div><i><em style={{width:`${health?.score||0}%`}}/></i></div>{health?.tone==='bad'&&<AlertTriangle size={18}/>}</article>
  </section>;
 }
