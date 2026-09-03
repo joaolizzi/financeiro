@@ -5,7 +5,6 @@ const anon=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.VITE_SUPABASE_PUBLI
 const service=process.env.SUPABASE_SERVICE_ROLE_KEY;
 const client=url&&anon?createClient(url,anon,{auth:{persistSession:false}}):null;
 const admin=url&&service?createClient(url,service,{auth:{persistSession:false}}):null;
-
 const json=(res,status,data)=>res.status(status).json(data);
 
 async function requireAdmin(req,res){
@@ -19,17 +18,32 @@ async function requireAdmin(req,res){
  return {user,role:role.role};
 }
 
+async function audit(actor,action,targetUserId=null,targetEmail=null,metadata={}){
+ const {error}=await admin.from('admin_audit_logs').insert({actor_id:actor.user.id,action,target_user_id:targetUserId,target_email:targetEmail,metadata});
+ if(error&&error.code!=='42P01')console.error('audit:',error.message);
+}
+
 async function dashboard(res,actor){
- const [{data:users,error:usersError},{count:expenseCount},{count:cardCount},{data:admins}]=await Promise.all([
+ const [{data:users,error:usersError},{data:admins},{data:expenses},{data:cards},{data:incomes},{data:logs,error:logsError}]=await Promise.all([
   admin.auth.admin.listUsers({page:1,perPage:200}),
-  admin.from('gastos').select('*',{count:'exact',head:true}),
-  admin.from('credit_cards').select('*',{count:'exact',head:true}),
-  admin.from('app_admins').select('user_id,role,created_at').order('created_at',{ascending:true})
+  admin.from('app_admins').select('user_id,role,created_at').order('created_at',{ascending:true}),
+  admin.from('gastos').select('user_id,valor'),
+  admin.from('credit_cards').select('user_id'),
+  admin.from('rendas').select('user_id,valor'),
+  admin.from('admin_audit_logs').select('id,actor_id,action,target_user_id,target_email,metadata,created_at').order('created_at',{ascending:false}).limit(40)
  ]);
  if(usersError)return json(res,500,{ok:false,error:usersError.message});
  const adminMap=new Map((admins||[]).map(a=>[a.user_id,a]));
- const list=(users?.users||[]).map(u=>({id:u.id,email:u.email,created_at:u.created_at,last_sign_in_at:u.last_sign_in_at,confirmed_at:u.email_confirmed_at||u.confirmed_at,role:adminMap.get(u.id)?.role||'user'}));
- return json(res,200,{ok:true,data:{actorRole:actor.role,users:list,stats:{users:list.length,admins:list.filter(u=>u.role!=='user').length,expenses:expenseCount||0,cards:cardCount||0}}});
+ const expenseMap=new Map(),cardMap=new Map(),incomeMap=new Map();
+ for(const e of expenses||[]){const v=expenseMap.get(e.user_id)||{count:0,total:0};v.count++;v.total+=Number(e.valor||0);expenseMap.set(e.user_id,v)}
+ for(const c of cards||[])cardMap.set(c.user_id,(cardMap.get(c.user_id)||0)+1);
+ for(const r of incomes||[])incomeMap.set(r.user_id,(incomeMap.get(r.user_id)||0)+Number(r.valor||0));
+ const base=(users?.users||[]);
+ const emailMap=new Map(base.map(u=>[u.id,u.email]));
+ const list=base.map(u=>{const ex=expenseMap.get(u.id)||{count:0,total:0};return{id:u.id,email:u.email,created_at:u.created_at,last_sign_in_at:u.last_sign_in_at,confirmed_at:u.email_confirmed_at||u.confirmed_at,role:adminMap.get(u.id)?.role||'user',banned_until:u.banned_until||null,metrics:{expenses:ex.count,totalSpent:ex.total,cards:cardMap.get(u.id)||0,income:incomeMap.get(u.id)||0}}});
+ const auditLogs=logsError?[]:(logs||[]).map(l=>({...l,actor_email:emailMap.get(l.actor_id)||'Usuário removido'}));
+ const totalSpent=list.reduce((s,u)=>s+u.metrics.totalSpent,0);
+ return json(res,200,{ok:true,data:{actorRole:actor.role,users:list,audit:auditLogs,stats:{users:list.length,admins:list.filter(u=>u.role!=='user').length,expenses:(expenses||[]).length,cards:(cards||[]).length,totalSpent}}});
 }
 
 export default async function handler(req,res){
@@ -38,33 +52,28 @@ export default async function handler(req,res){
  if(req.method!=='POST')return json(res,405,{ok:false,error:'Método não permitido.'});
  const action=req.body?.action;
  if(action==='create-user'){
-  const email=String(req.body?.email||'').trim().toLowerCase();
-  const password=String(req.body?.password||'');
-  const makeAdmin=Boolean(req.body?.makeAdmin);
+  const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||''),makeAdmin=Boolean(req.body?.makeAdmin);
   if(!email||password.length<6)return json(res,400,{ok:false,error:'Informe e-mail e senha com pelo menos 6 caracteres.'});
-  const {data,error}=await admin.auth.admin.createUser({email,password,email_confirm:true});
-  if(error)return json(res,400,{ok:false,error:error.message});
-  if(makeAdmin){
-   const {error:roleError}=await admin.from('app_admins').insert({user_id:data.user.id,role:'admin',created_by:actor.user.id});
-   if(roleError)return json(res,400,{ok:false,error:roleError.message});
-  }
-  return json(res,200,{ok:true,user:{id:data.user.id,email:data.user.email,role:makeAdmin?'admin':'user'}});
+  const {data,error}=await admin.auth.admin.createUser({email,password,email_confirm:true});if(error)return json(res,400,{ok:false,error:error.message});
+  if(makeAdmin){const {error:roleError}=await admin.from('app_admins').insert({user_id:data.user.id,role:'admin',created_by:actor.user.id});if(roleError)return json(res,400,{ok:false,error:roleError.message})}
+  await audit(actor,'create_user',data.user.id,data.user.email,{role:makeAdmin?'admin':'user'});
+  return json(res,200,{ok:true});
  }
  if(action==='set-role'){
-  const userId=String(req.body?.userId||'');
-  const role=String(req.body?.role||'user');
-  if(!userId||!['user','admin'].includes(role))return json(res,400,{ok:false,error:'Dados inválidos.'});
+  const userId=String(req.body?.userId||''),role=String(req.body?.role||'user');if(!userId||!['user','admin'].includes(role))return json(res,400,{ok:false,error:'Dados inválidos.'});
   if(userId===actor.user.id&&role==='user')return json(res,400,{ok:false,error:'Você não pode remover seu próprio acesso administrativo.'});
-  const {data:target}=await admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle();
+  const [{data:target},{data:{user:targetUser}}]=await Promise.all([admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle(),admin.auth.admin.getUserById(userId)]);
   if(target?.role==='owner')return json(res,400,{ok:false,error:'O proprietário não pode ser rebaixado por este painel.'});
-  if(role==='admin'){
-   const {error}=await admin.from('app_admins').upsert({user_id:userId,role:'admin',created_by:actor.user.id},{onConflict:'user_id'});
-   if(error)return json(res,400,{ok:false,error:error.message});
-  }else{
-   const {error}=await admin.from('app_admins').delete().eq('user_id',userId);
-   if(error)return json(res,400,{ok:false,error:error.message});
-  }
-  return json(res,200,{ok:true});
+  if(role==='admin'){const {error}=await admin.from('app_admins').upsert({user_id:userId,role:'admin',created_by:actor.user.id},{onConflict:'user_id'});if(error)return json(res,400,{ok:false,error:error.message})}
+  else{const {error}=await admin.from('app_admins').delete().eq('user_id',userId);if(error)return json(res,400,{ok:false,error:error.message})}
+  await audit(actor,'set_role',userId,targetUser?.email,{role});return json(res,200,{ok:true});
+ }
+ if(action==='set-access'){
+  const userId=String(req.body?.userId||''),disabled=Boolean(req.body?.disabled);if(!userId)return json(res,400,{ok:false,error:'Usuário inválido.'});
+  if(userId===actor.user.id&&disabled)return json(res,400,{ok:false,error:'Você não pode bloquear sua própria conta.'});
+  const {data:target}=await admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle();if(target?.role==='owner')return json(res,400,{ok:false,error:'A conta do proprietário é protegida.'});
+  const {data,error}=await admin.auth.admin.updateUserById(userId,{ban_duration:disabled?'876000h':'none'});if(error)return json(res,400,{ok:false,error:error.message});
+  await audit(actor,disabled?'disable_user':'enable_user',userId,data.user?.email,{disabled});return json(res,200,{ok:true});
  }
  return json(res,400,{ok:false,error:'Ação administrativa desconhecida.'});
 }
