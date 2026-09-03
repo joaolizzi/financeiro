@@ -4,55 +4,40 @@ import {ArrowDownRight,ArrowUpRight,CalendarDays,Gauge,Receipt,WalletCards} from
 import './AdvancedDashboard.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-
-function previousMonth(month,year){
- if(month===1)return {month:12,year:year-1};
- return {month:month-1,year};
-}
+function previousMonth(month,year){return month===1?{month:12,year:year-1}:{month:month-1,year};}
 function daysInMonth(month,year){return new Date(year,month,0).getDate()}
 
-export default function AdvancedDashboard({userId,expenses,income,month,year}){
+export default function AdvancedDashboard({userId,expenses=[],income,month,year}){
+ const today=new Date();
+ const currentMonth=month||today.getMonth()+1;
+ const currentYear=year||today.getFullYear();
  const[previous,setPrevious]=useState({total:0,income:0,count:0});
  const[loading,setLoading]=useState(true);
-
  useEffect(()=>{
   let active=true;
   async function load(){
-   if(!userId){setLoading(false);return}
-   const p=previousMonth(month,year);
-   const first=`${p.year}-${String(p.month).padStart(2,'0')}-01`;
-   const next=p.month===12?1:p.month+1;
-   const ny=p.month===12?p.year+1:p.year;
-   const end=`${ny}-${String(next).padStart(2,'0')}-01`;
-   const[g,r]=await Promise.all([
-    supabase.from('gastos').select('valor').eq('user_id',userId).gte('data',first).lt('data',end),
-    supabase.from('rendas').select('valor').eq('user_id',userId).eq('mes',p.month).eq('ano',p.year).maybeSingle()
-   ]);
+   let uid=userId;
+   if(!uid){const{data}=await supabase.auth.getUser();uid=data.user?.id}
+   if(!uid){setLoading(false);return}
+   const p=previousMonth(currentMonth,currentYear),first=`${p.year}-${String(p.month).padStart(2,'0')}-01`,next=p.month===12?1:p.month+1,ny=p.month===12?p.year+1:p.year,end=`${ny}-${String(next).padStart(2,'0')}-01`;
+   const[g,r]=await Promise.all([supabase.from('gastos').select('valor').eq('user_id',uid).gte('data',first).lt('data',end),supabase.from('rendas').select('valor').eq('user_id',uid).eq('mes',p.month).eq('ano',p.year).maybeSingle()]);
    if(active)setPrevious({total:(g.data||[]).reduce((s,e)=>s+Number(e.valor||0),0),income:Number(r.data?.valor||0),count:(g.data||[]).length});
    if(active)setLoading(false);
   }
-  load();
-  return()=>{active=false};
- },[userId,month,year]);
-
+  load();return()=>{active=false};
+ },[userId,currentMonth,currentYear]);
  const total=useMemo(()=>expenses.reduce((s,e)=>s+Number(e.valor||0),0),[expenses]);
- const count=expenses.length;
- const monthDays=daysInMonth(month,year);
- const today=new Date();
- const isCurrentMonth=today.getMonth()+1===month&&today.getFullYear()===year;
+ const monthDays=daysInMonth(currentMonth,currentYear);
+ const isCurrentMonth=today.getMonth()+1===currentMonth&&today.getFullYear()===currentYear;
  const elapsed=isCurrentMonth?Math.min(today.getDate(),monthDays):monthDays;
  const dailyAverage=elapsed?total/elapsed:0;
- const projected= isCurrentMonth ? dailyAverage*monthDays : total;
+ const projected=isCurrentMonth?dailyAverage*monthDays:total;
  const savings=Number(income||0)-total;
  const savingsRate=income>0?savings/income*100:0;
  const difference=total-previous.total;
  const differencePct=previous.total>0?difference/previous.total*100:null;
- const top=useMemo(()=>{
-  const map={};expenses.forEach(e=>{map[e.categoria]=(map[e.categoria]||0)+Number(e.valor||0)});
-  return Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
- },[expenses]);
+ const top=useMemo(()=>{const map={};expenses.forEach(e=>{map[e.categoria]=(map[e.categoria]||0)+Number(e.valor||0)});return Object.entries(map).sort((a,b)=>b[1]-a[1])[0]},[expenses]);
  const max=Math.max(total,previous.total,1);
-
  return <section className="advanced-dashboard">
   <div className="advanced-head"><div><span className="advanced-eyebrow">VISÃO GERAL</span><h2>Seu mês em números</h2><p>Indicadores para entender seu ritmo de gastos antes do fim do mês.</p></div><div className="advanced-badge"><Gauge size={15}/> {isCurrentMonth?'Acompanhamento em tempo real':'Fechamento do mês'}</div></div>
   <div className="advanced-grid">
