@@ -1,0 +1,46 @@
+import React,{useEffect,useMemo,useState} from 'react';
+import {ArrowLeft,ArrowRight,CreditCard,Plus,Sparkles,Wifi} from 'lucide-react';
+import {supabase} from '../lib/supabase';
+import './PremiumOverview.css';
+
+const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const brand=name=>{const n=String(name||'').toLowerCase();if(n.includes('nubank'))return'nubank';if(n.includes('inter'))return'inter';if(n.includes('itaú')||n.includes('itau'))return'itau';if(n.includes('santander'))return'santander';if(n.includes('bradesco'))return'bradesco';if(n.includes('c6'))return'c6';if(n.includes('neon'))return'neon';if(n.includes('mercado pago'))return'mercadopago';if(n.includes('picpay'))return'picpay';if(n.includes('caixa'))return'caixa';if(n.includes('brasil'))return'bb';return'default'};
+const short=name=>({nubank:'nu',inter:'inter',itau:'itaú',santander:'santander',bradesco:'bradesco',c6:'C6',neon:'neon',mercadopago:'MP',picpay:'picpay',caixa:'caixa',bb:'BB',default:'card'})[brand(name)];
+const last4=c=>String(c.ultimos_4||'').replace(/\D/g,'').slice(-4)||String(c.id||'').replace(/[^a-z0-9]/gi,'').slice(-4).padStart(4,'0');
+const expiry=c=>c.validade_mes&&c.validade_ano?`${String(c.validade_mes).padStart(2,'0')}/${String(c.validade_ano).slice(-2)}`:'••/••';
+
+export default function PremiumOverview({userId,income,expenses,onOpenCards,onNewExpense}){
+ const[cards,setCards]=useState([]),[active,setActive]=useState(0),[paused,setPaused]=useState(false);
+ useEffect(()=>{if(!userId)return;supabase.from('credit_cards').select('*').eq('user_id',userId).order('created_at',{ascending:true}).then(({data})=>setCards(data||[]))},[userId]);
+ useEffect(()=>{if(paused||cards.length<2)return;const id=setInterval(()=>setActive(v=>(v+1)%cards.length),4800);return()=>clearInterval(id)},[paused,cards.length]);
+ const total=useMemo(()=>expenses.reduce((s,e)=>s+Number(e.valor||0),0),[expenses]);
+ const balance=income-total;
+ const move=d=>{if(!cards.length)return;setActive(v=>(v+d+cards.length)%cards.length)};
+ const visible=cards.length?[-1,0,1].map(offset=>{const index=(active+offset+cards.length)%cards.length;return{card:cards[index],offset,index}}):[];
+ const current=cards[active];
+ return <section className={`premium-hero premium-tone-${brand(current?.nome)}`}>
+   <div className="premium-ambient"/>
+   <div className="premium-copy">
+     <span className="premium-kicker"><Sparkles size={13}/> FINANÇAS PRIVATE</span>
+     <h2>Seu dinheiro,<br/><em>em movimento.</em></h2>
+     <p>Uma visão elegante do seu mês, com seus cartões reais no centro da experiência.</p>
+     <div className="premium-balance"><span>Saldo disponível</span><strong className={balance<0?'is-negative':''}>{money(balance)}</strong><small>{money(total)} gastos de {money(income)} disponíveis</small></div>
+     <div className="premium-hero-actions"><button className="premium-main-action" onClick={onNewExpense}><Plus size={16}/> Novo gasto</button><button className="premium-ghost-action" onClick={onOpenCards}><CreditCard size={16}/> Gerenciar cartões</button></div>
+   </div>
+   <div className="premium-deck-area" onMouseEnter={()=>setPaused(true)} onMouseLeave={()=>setPaused(false)}>
+     {cards.length?<>
+       <div className="premium-deck" aria-label="Carrossel de cartões">
+         {visible.map(({card,offset,index})=><button key={`${card.id}-${offset}`} className={`premium-bank-card slot-${offset===0?'center':offset<0?'left':'right'} bank-${brand(card.nome)}`} onClick={()=>offset===0?onOpenCards():setActive(index)} aria-label={`${card.nome}${offset===0?' selecionado':''}`}>
+           <div className="premium-card-sheen"/>
+           <div className="premium-card-head"><b>{card.apelido||card.nome}</b><span>{short(card.nome)}</span></div>
+           <div className="premium-card-chip"><i/><i/><i/></div><Wifi className="premium-contactless" size={20}/>
+           <div className="premium-card-number">•••• &nbsp;•••• &nbsp;•••• &nbsp;{last4(card)}</div>
+           <div className="premium-card-foot"><div><small>TITULAR</small><b>{card.nome_titular||'SEU NOME'}</b></div><div><small>VALIDADE</small><b>{expiry(card)}</b></div><strong>{card.bandeira||'VISA'}</strong></div>
+         </button>)}
+       </div>
+       <div className="premium-deck-controls"><button onClick={()=>move(-1)} aria-label="Cartão anterior"><ArrowLeft size={16}/></button><div>{cards.map((c,i)=><button key={c.id} className={i===active?'active':''} onClick={()=>setActive(i)} aria-label={`Selecionar ${c.nome}`}/>)}</div><button onClick={()=>move(1)} aria-label="Próximo cartão"><ArrowRight size={16}/></button></div>
+       <div className="premium-card-caption"><span>{current?.apelido||current?.nome}</span><b>{money(current?.limite)} de limite</b></div>
+     </>:<div className="premium-empty-card"><CreditCard size={28}/><b>Seu primeiro cartão vai aparecer aqui</b><span>Cadastre um cartão para ativar o deck 3D.</span><button onClick={onOpenCards}>Cadastrar cartão</button></div>}
+   </div>
+ </section>;
+}
