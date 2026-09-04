@@ -1,35 +1,42 @@
-import React,{useMemo,useState} from 'react';
-import {AlertTriangle,CheckCircle2,Target,TrendingUp,Clock3,X} from 'lucide-react';
+import React,{useEffect,useMemo,useState} from 'react';
+import {AlertTriangle,CheckCircle2,Target,TrendingUp,TrendingDown,Clock3,X,BrainCircuit,Gauge,History} from 'lucide-react';
+import {supabase} from '../lib/supabase';
+import CalcInfo from './CalcInfo';
 import './FinanceAlerts.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const monthKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const median=values=>{const a=values.map(Number).filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return 0;const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2};
 
 export default function FinanceAlerts({expenses,income,month,year}){
  const storageKey=`finance-alerts-dismissed-${year}-${month}`;
- const [dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{return[]}});
- const alerts=useMemo(()=>{
-  const total=expenses.reduce((s,e)=>s+Number(e.valor||0),0);
-  const fixed=expenses.filter(e=>e.tipo==='fixo').reduce((s,e)=>s+Number(e.valor||0),0);
-  const map={};expenses.forEach(e=>{map[e.categoria]=(map[e.categoria]||0)+Number(e.valor||0)});
-  const top=Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
-  const daysInMonth=new Date(year,month,0).getDate();
-  const today=new Date();
-  const isCurrentMonth=today.getFullYear()===year&&today.getMonth()+1===month;
-  const elapsed=isCurrentMonth?Math.min(today.getDate(),daysInMonth):daysInMonth;
-  const dayProgress=elapsed/daysInMonth*100;
-  const result=[];
-  if(income>0){
-   const used=total/income*100;
-   if(used>=100) result.push({id:'budget-over',type:'danger',icon:AlertTriangle,title:'Orçamento ultrapassado',text:`Seus gastos já ultrapassaram sua renda em ${money(total-income)}.`});
-   else if(used>=80) result.push({id:'budget-high',type:'warning',icon:AlertTriangle,title:'Atenção ao orçamento',text:`Você já utilizou ${used.toFixed(0)}% da renda. Restam ${money(income-total)}.`});
-   else if(isCurrentMonth&&used>dayProgress+10) result.push({id:'pace-high',type:'warning',icon:Clock3,title:'Ritmo de gastos acima do ideal',text:`Você consumiu ${used.toFixed(0)}% da renda, mas o mês avançou ${dayProgress.toFixed(0)}%.`});
-   else if(isCurrentMonth&&used<=Math.max(dayProgress-15,20)) result.push({id:'pace-good',type:'positive',icon:CheckCircle2,title:'Bom ritmo financeiro',text:`Você usou ${used.toFixed(0)}% da renda com ${dayProgress.toFixed(0)}% do mês já passado.`});
-  }
-  if(top&&total>0&&top[1]/total>=.4) result.push({id:`category-${top[0]}`,type:'info',icon:Target,title:`${top[0]} concentra seus gastos`,text:`Essa categoria representa ${(top[1]/total*100).toFixed(0)}% dos gastos (${money(top[1])}).`});
-  if(fixed>0&&income>0&&fixed/income>=.5) result.push({id:'fixed-high',type:'warning',icon:TrendingUp,title:'Muitos gastos fixos',text:`Seus gastos fixos consomem ${(fixed/income*100).toFixed(0)}% da renda.`});
-  if(!result.length) result.push({id:'ok',type:'positive',icon:CheckCircle2,title:'Tudo sob controle',text:'Não encontramos nenhum alerta importante nos seus dados deste mês.'});
-  return result.filter(a=>!dismissed.includes(a.id)).slice(0,4);
- },[expenses,income,month,year,dismissed]);
- function dismiss(id){const next=[...dismissed,id];setDismissed(next);localStorage.setItem(storageKey,JSON.stringify(next));}
- return <section className="alerts-section"><div className="panel alerts-panel"><div className="panel-head"><div><h2>Alertas inteligentes</h2><p>O Finanças acompanha seu comportamento e destaca o que merece atenção.</p></div><TrendingUp size={20}/></div>{alerts.length?<div className="alerts-list">{alerts.map(a=>{const Icon=a.icon;return <article className={`alert-item ${a.type}`} key={a.id}><div className="alert-icon"><Icon size={17}/></div><div><b>{a.title}</b><span>{a.text}</span></div><button className="alert-dismiss" onClick={()=>dismiss(a.id)} title="Dispensar alerta"><X size={14}/></button></article>})}</div>:<div className="alerts-empty"><CheckCircle2 size={17}/><span>Sem novos alertas para este mês.</span></div>}</div></section>;
+ const[dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{return[]}}),[history,setHistory]=useState([]),[historyError,setHistoryError]=useState('');
+ useEffect(()=>{setDismissed((()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{return[]}})())},[storageKey]);
+ useEffect(()=>{let alive=true;(async()=>{setHistoryError('');const{data:{user}}=await supabase.auth.getUser();if(!user)return;const selected=new Date(Number(year),Number(month)-1,1),start=new Date(selected.getFullYear(),selected.getMonth()-3,1),from=`${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-01`,to=`${selected.getFullYear()}-${String(selected.getMonth()+1).padStart(2,'0')}-01`;const{data,error}=await supabase.from('gastos').select('descricao,categoria,valor,data').eq('user_id',user.id).gte('data',from).lt('data',to).order('data',{ascending:true});if(!alive)return;if(error){setHistory([]);setHistoryError(error.message);return}setHistory(data||[])})().catch(e=>alive&&setHistoryError(e.message||'Falha ao carregar histórico.'));return()=>{alive=false}},[month,year]);
+ const intelligence=useMemo(()=>{
+  const total=expenses.reduce((s,e)=>s+Number(e.valor||0),0),fixed=expenses.filter(e=>e.tipo==='fixo').reduce((s,e)=>s+Number(e.valor||0),0),today=new Date(),daysInMonth=new Date(Number(year),Number(month),0).getDate(),current=today.getFullYear()===Number(year)&&today.getMonth()+1===Number(month),elapsed=current?Math.max(1,Math.min(today.getDate(),daysInMonth)):daysInMonth,remainingDays=current?Math.max(daysInMonth-today.getDate()+1,1):0,progress=current?elapsed/daysInMonth:1;
+  const currentCats={};expenses.forEach(e=>currentCats[e.categoria||'Outros']=(currentCats[e.categoria||'Outros']||0)+Number(e.valor||0));
+  const byMonth={},historyCats={};history.forEach(e=>{const mk=String(e.data||'').slice(0,7),cat=e.categoria||'Outros';byMonth[mk]=(byMonth[mk]||0)+Number(e.valor||0);historyCats[cat]??={months:{},values:[]};historyCats[cat].months[mk]=(historyCats[cat].months[mk]||0)+Number(e.valor||0);historyCats[cat].values.push(Number(e.valor||0))});
+  const monthTotals=Object.values(byMonth),historyAvg=monthTotals.length?monthTotals.reduce((a,b)=>a+b,0)/monthTotals.length:0,projected=current?total/elapsed*daysInMonth:total,trendPct=historyAvg?((projected-historyAvg)/historyAvg)*100:0;
+  const categoryAnomalies=[];for(const[cat,currentValue]of Object.entries(currentCats)){const h=historyCats[cat];if(!h)continue;const vals=Object.values(h.months);if(vals.length<2)continue;const avg=vals.reduce((a,b)=>a+b,0)/vals.length,expected=current?avg*progress:avg,diff=currentValue-expected,pct=expected>0?diff/expected*100:0;if(expected>=20&&diff>=50&&pct>=50)categoryAnomalies.push({cat,currentValue,expected,pct,avg})}
+  categoryAnomalies.sort((a,b)=>b.pct-a.pct);
+  const transactionAnomalies=[];for(const e of expenses){const vals=historyCats[e.categoria||'Outros']?.values||[];if(vals.length<4)continue;const med=median(vals),value=Number(e.valor||0);if(med>=10&&value>=med*2&&value-med>=40)transactionAnomalies.push({expense:e,median:med,multiple:value/med})}transactionAnomalies.sort((a,b)=>b.multiple-a.multiple);
+  const safeDaily=current&&income>0?Math.max((Number(income)-total)/remainingDays,0):null,top=Object.entries(currentCats).sort((a,b)=>b[1]-a[1])[0];
+  const alerts=[];
+  if(income>0){const used=total/income*100,dayProgress=elapsed/daysInMonth*100;if(used>=100)alerts.push({id:'budget-over',type:'danger',icon:AlertTriangle,title:'Orçamento ultrapassado',text:`Seus gastos já ultrapassaram sua renda em ${money(total-income)}.`});else if(used>=80)alerts.push({id:'budget-high',type:'warning',icon:AlertTriangle,title:'Atenção ao orçamento',text:`Você já utilizou ${used.toFixed(0)}% da renda. Restam ${money(income-total)}.`});else if(current&&used>dayProgress+10)alerts.push({id:'pace-high',type:'warning',icon:Clock3,title:'Ritmo de gastos acima do ideal',text:`Você consumiu ${used.toFixed(0)}% da renda, mas o mês avançou ${dayProgress.toFixed(0)}%.`})}
+  categoryAnomalies.slice(0,2).forEach(a=>alerts.push({id:`anomaly-cat-${a.cat}`,type:'danger',icon:BrainCircuit,title:`${a.cat} está fora do seu padrão`,text:`Você gastou ${money(a.currentValue)}. Para este ponto do mês, seu histórico indicaria cerca de ${money(a.expected)} (${a.pct.toFixed(0)}% acima).`}));
+  transactionAnomalies.slice(0,1).forEach(a=>alerts.push({id:`anomaly-tx-${a.expense.id||a.expense.descricao}`,type:'warning',icon:AlertTriangle,title:'Gasto individual incomum',text:`${a.expense.descricao}: ${money(a.expense.valor)}. A mediana histórica da categoria é ${money(a.median)}.`}));
+  if(historyAvg>0&&Math.abs(trendPct)>=15)alerts.push({id:'history-trend',type:trendPct>0?'warning':'positive',icon:trendPct>0?TrendingUp:TrendingDown,title:trendPct>0?'Projeção acima da sua média':'Projeção abaixo da sua média',text:`O mês aponta para ${money(projected)}, ${Math.abs(trendPct).toFixed(0)}% ${trendPct>0?'acima':'abaixo'} da média dos últimos ${monthTotals.length} meses (${money(historyAvg)}).`});
+  if(top&&total>0&&top[1]/total>=.4)alerts.push({id:`category-${top[0]}`,type:'info',icon:Target,title:`${top[0]} concentra seus gastos`,text:`Essa categoria representa ${(top[1]/total*100).toFixed(0)}% dos gastos (${money(top[1])}).`});
+  if(fixed>0&&income>0&&fixed/income>=.5)alerts.push({id:'fixed-high',type:'warning',icon:TrendingUp,title:'Muitos gastos fixos',text:`Seus gastos fixos consomem ${(fixed/income*100).toFixed(0)}% da renda.`});
+  if(!alerts.length)alerts.push({id:'ok',type:'positive',icon:CheckCircle2,title:'Tudo sob controle',text:history.length?'Seu mês está compatível com o comportamento recente.':'Ainda não há histórico suficiente para detectar desvios com confiança.'});
+  return{total,projected,historyAvg,trendPct,safeDaily,remainingDays,historyMonths:monthTotals.length,alerts};
+ },[expenses,income,month,year,history]);
+ const alerts=intelligence.alerts.filter(a=>!dismissed.includes(a.id)).slice(0,6);
+ function dismiss(id){const next=[...new Set([...dismissed,id])];setDismissed(next);localStorage.setItem(storageKey,JSON.stringify(next))}
+ return <section className="alerts-section"><div className="panel alerts-panel intelligence-4"><div className="panel-head"><div><span className="intelligence-kicker"><BrainCircuit size={12}/> INTELLIGENCE 4.0</span><h2>Inteligência financeira</h2><p>Compara seu mês com seu próprio histórico e detecta comportamentos fora do padrão.</p></div><TrendingUp size={20}/></div>
+  <div className="intelligence-metrics"><article><Gauge size={16}/><span>Limite seguro diário <CalcInfo title="Limite seguro diário">Saldo restante da renda ÷ quantidade de dias que ainda restam no mês, incluindo hoje. Não considera compromissos futuros que ainda não foram lançados.</CalcInfo></span><b>{intelligence.safeDaily===null?'—':money(intelligence.safeDaily)}</b><small>{intelligence.safeDaily===null?'Disponível apenas no mês atual com renda definida':`${intelligence.remainingDays} dias restantes`}</small></article><article><TrendingUp size={16}/><span>Projeção atual <CalcInfo title="Projeção do mês">No mês atual: gastos registrados ÷ dias decorridos × total de dias do mês. Em meses encerrados, usa o valor real registrado.</CalcInfo></span><b>{money(intelligence.projected)}</b><small>{intelligence.trendPct?`${Math.abs(intelligence.trendPct).toFixed(0)}% ${intelligence.trendPct>0?'acima':'abaixo'} da média`:'sem variação histórica suficiente'}</small></article><article><History size={16}/><span>Média histórica <CalcInfo title="Média histórica">Média do total gasto em até 3 meses anteriores ao período selecionado. Só usa meses que possuem lançamentos.</CalcInfo></span><b>{intelligence.historyMonths?money(intelligence.historyAvg):'—'}</b><small>{intelligence.historyMonths?`${intelligence.historyMonths} ${intelligence.historyMonths===1?'mês analisado':'meses analisados'}`:'histórico insuficiente'}</small></article></div>
+  {historyError&&<div className="intelligence-history-note">Não foi possível comparar o histórico agora: {historyError}</div>}
+  {alerts.length?<div className="alerts-list">{alerts.map(a=>{const Icon=a.icon;return <article className={`alert-item ${a.type}`} key={a.id}><div className="alert-icon"><Icon size={17}/></div><div><b>{a.title}</b><span>{a.text}</span></div><button className="alert-dismiss" onClick={()=>dismiss(a.id)} title="Dispensar alerta"><X size={14}/></button></article>})}</div>:<div className="alerts-empty"><CheckCircle2 size={17}/><span>Sem novos alertas para este mês.</span></div>}
+ </div></section>;
 }
