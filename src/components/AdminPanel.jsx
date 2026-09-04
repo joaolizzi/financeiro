@@ -13,7 +13,7 @@ export default function AdminPanel({session}){
  }
  async function load(){setLoading(true);setError('');try{const j=await request();setData(j.data);if(selected)setSelected(j.data.users.find(u=>u.id===selected.id)||null)}catch(e){setError(e.message)}finally{setLoading(false)}}
  useEffect(()=>{load()},[]);
- async function createUser(e){e.preventDefault();setSaving(true);setError('');setSuccess('');const f=new FormData(e.currentTarget);try{const email=String(f.get('email')||'').trim();await request({action:'create-user',email,password:f.get('password'),makeAdmin:f.get('makeAdmin')==='on'});e.currentTarget.reset();setSuccess(`Conta ${email} criada com sucesso e já confirmada.`);await load()}catch(e){setError(e.message)}finally{setSaving(false)}}
+ async function createUser(e){e.preventDefault();const form=e.currentTarget;setSaving(true);setError('');setSuccess('');const f=new FormData(form);try{const email=String(f.get('email')||'').trim();await request({action:'create-user',email,password:f.get('password'),makeAdmin:f.get('makeAdmin')==='on'});form.reset();setSuccess(`Conta ${email} criada com sucesso e já confirmada.`);await load()}catch(e){setError(e.message)}finally{setSaving(false)}}
  async function act(body){setSaving(true);setError('');setSuccess('');try{await request(body);await load()}catch(e){setError(e.message)}finally{setSaving(false)}}
  const users=useMemo(()=>{const q=query.toLowerCase().trim();return(data?.users||[]).filter(u=>!q||String(u.email||'').toLowerCase().includes(q)||u.role.includes(q))},[data,query]);
  if(loading&&!data)return <section className="admin-shell"><div className="admin-loading"><RefreshCw className="spin" size={22}/> Carregando painel administrativo...</div></section>;
