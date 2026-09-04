@@ -2,6 +2,7 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {AlertTriangle,CheckCircle2,Target,TrendingUp,TrendingDown,Clock3,X,BrainCircuit,Gauge,History} from 'lucide-react';
 import {supabase} from '../lib/supabase';
 import CalcInfo from './CalcInfo';
+import RecommendationCenter from './RecommendationCenter';
 import './FinanceAlerts.css';
 
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -34,9 +35,9 @@ export default function FinanceAlerts({expenses,income,month,year}){
  },[expenses,income,month,year,history]);
  const alerts=intelligence.alerts.filter(a=>!dismissed.includes(a.id)).slice(0,6);
  function dismiss(id){const next=[...new Set([...dismissed,id])];setDismissed(next);localStorage.setItem(storageKey,JSON.stringify(next))}
- return <section className="alerts-section"><div className="panel alerts-panel intelligence-4"><div className="panel-head"><div><span className="intelligence-kicker"><BrainCircuit size={12}/> INTELLIGENCE 4.0</span><h2>Inteligência financeira</h2><p>Compara seu mês com seu próprio histórico e detecta comportamentos fora do padrão.</p></div><TrendingUp size={20}/></div>
+ return <><section className="alerts-section"><div className="panel alerts-panel intelligence-4"><div className="panel-head"><div><span className="intelligence-kicker"><BrainCircuit size={12}/> INTELLIGENCE 4.0</span><h2>Inteligência financeira</h2><p>Compara seu mês com seu próprio histórico e detecta comportamentos fora do padrão.</p></div><TrendingUp size={20}/></div>
   <div className="intelligence-metrics"><article><Gauge size={16}/><span>Limite seguro diário <CalcInfo title="Limite seguro diário">Saldo restante da renda ÷ quantidade de dias que ainda restam no mês, incluindo hoje. Não considera compromissos futuros que ainda não foram lançados.</CalcInfo></span><b>{intelligence.safeDaily===null?'—':money(intelligence.safeDaily)}</b><small>{intelligence.safeDaily===null?'Disponível apenas no mês atual com renda definida':`${intelligence.remainingDays} dias restantes`}</small></article><article><TrendingUp size={16}/><span>Projeção atual <CalcInfo title="Projeção do mês">No mês atual: gastos registrados ÷ dias decorridos × total de dias do mês. Em meses encerrados, usa o valor real registrado.</CalcInfo></span><b>{money(intelligence.projected)}</b><small>{intelligence.trendPct?`${Math.abs(intelligence.trendPct).toFixed(0)}% ${intelligence.trendPct>0?'acima':'abaixo'} da média`:'sem variação histórica suficiente'}</small></article><article><History size={16}/><span>Média histórica <CalcInfo title="Média histórica">Média do total gasto em até 3 meses anteriores ao período selecionado. Só usa meses que possuem lançamentos.</CalcInfo></span><b>{intelligence.historyMonths?money(intelligence.historyAvg):'—'}</b><small>{intelligence.historyMonths?`${intelligence.historyMonths} ${intelligence.historyMonths===1?'mês analisado':'meses analisados'}`:'histórico insuficiente'}</small></article></div>
   {historyError&&<div className="intelligence-history-note">Não foi possível comparar o histórico agora: {historyError}</div>}
   {alerts.length?<div className="alerts-list">{alerts.map(a=>{const Icon=a.icon;return <article className={`alert-item ${a.type}`} key={a.id}><div className="alert-icon"><Icon size={17}/></div><div><b>{a.title}</b><span>{a.text}</span></div><button className="alert-dismiss" onClick={()=>dismiss(a.id)} title="Dispensar alerta"><X size={14}/></button></article>})}</div>:<div className="alerts-empty"><CheckCircle2 size={17}/><span>Sem novos alertas para este mês.</span></div>}
- </div></section>;
+ </div></section><RecommendationCenter expenses={expenses} income={income} month={month} year={year}/></>;
 }
