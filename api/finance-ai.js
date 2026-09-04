@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
+const supabaseUrl=process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL;
+const supabasePublicKey=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.VITE_SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY||process.env.VITE_SUPABASE_ANON_KEY;
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
 
   try {
+    if(!supabaseUrl||!supabasePublicKey)return res.status(500).json({error:'Supabase não está configurado corretamente no servidor.'});
     const auth = req.headers.authorization || '';
     if (!auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Sessão não encontrada.' });
 
-    const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_PUBLISHABLE_KEY);
+    const supabase = createClient(supabaseUrl, supabasePublicKey,{auth:{persistSession:false}});
     const token = auth.slice(7);
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return res.status(401).json({ error: 'Sessão inválida.' });
@@ -16,6 +20,7 @@ export default async function handler(req, res) {
     if (!question || typeof question !== 'string' || question.trim().length < 2) {
       return res.status(400).json({ error: 'Digite uma pergunta.' });
     }
+    if(question.length>4000)return res.status(400).json({error:'A pergunta ficou muito longa. Resuma para até 4.000 caracteres.'});
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'A IA ainda não está configurada no servidor.' });
@@ -41,7 +46,8 @@ export default async function handler(req, res) {
       })
     });
 
-    const result = await response.json();
+    let result={};
+    try{result=await response.json()}catch{return res.status(502).json({error:'A IA respondeu em um formato inválido.'})}
     if (!response.ok) {
       return res.status(response.status).json({
         error: result?.error?.message || result?.errors?.[0]?.message || 'Não foi possível consultar a IA.'
