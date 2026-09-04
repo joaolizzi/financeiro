@@ -22,8 +22,9 @@ async function requireAdmin(req,res){
 }
 
 async function audit(actor,action,targetUserId=null,targetEmail=null,metadata={}){
- const {error}=await admin.from('admin_audit_logs').insert({actor_id:actor.user.id,action,target_user_id:targetUserId,target_email:targetEmail,metadata});
+ const {data,error}=await admin.from('admin_audit_logs').insert({actor_id:actor.user.id,action,target_user_id:targetUserId,target_email:targetEmail,metadata}).select('id').single();
  if(error&&error.code!=='42P01')console.error('audit:',error.message);
+ return data?.id||null;
 }
 
 async function dashboard(res,actor){
@@ -33,7 +34,7 @@ async function dashboard(res,actor){
   admin.from('gastos').select('user_id,valor'),
   admin.from('credit_cards').select('user_id'),
   admin.from('rendas').select('user_id,valor'),
-  admin.from('admin_audit_logs').select('id,actor_id,action,target_user_id,target_email,metadata,created_at').order('created_at',{ascending:false}).limit(40)
+  admin.from('admin_audit_logs').select('id,actor_id,action,target_user_id,target_email,metadata,created_at').order('created_at',{ascending:false}).limit(60)
  ]);
  if(usersError)return json(res,500,{ok:false,error:usersError.message});
  const adminMap=new Map((admins||[]).map(a=>[a.user_id,a])),expenseMap=new Map(),cardMap=new Map(),incomeMap=new Map();
@@ -42,8 +43,9 @@ async function dashboard(res,actor){
  for(const r of incomes||[])incomeMap.set(r.user_id,(incomeMap.get(r.user_id)||0)+Number(r.valor||0));
  const base=users?.users||[],emailMap=new Map(base.map(u=>[u.id,u.email]));
  const list=base.map(u=>{const ex=expenseMap.get(u.id)||{count:0,total:0};return{id:u.id,email:u.email,created_at:u.created_at,last_sign_in_at:u.last_sign_in_at,confirmed_at:u.email_confirmed_at||u.confirmed_at,role:adminMap.get(u.id)?.role||'user',banned_until:u.banned_until||null,metrics:{expenses:ex.count,totalSpent:ex.total,cards:cardMap.get(u.id)||0,income:incomeMap.get(u.id)||0}}});
- const auditLogs=logsError?[]:(logs||[]).map(l=>({...l,actor_email:emailMap.get(l.actor_id)||'Usuário removido'}));
- return json(res,200,{ok:true,data:{actorRole:actor.role,users:list,audit:auditLogs,stats:{users:list.length,admins:list.filter(u=>u.role!=='user').length,expenses:(expenses||[]).length,cards:(cards||[]).length,totalSpent:list.reduce((s,u)=>s+u.metrics.totalSpent,0)}}});
+ const auditLogs=logsError?[]:(logs||[]).map(l=>({...l,actor_email:emailMap.get(l.actor_id)||l.metadata?.requesterEmail||'Usuário removido'}));
+ const pendingDeleteRequests=auditLogs.filter(l=>l.action==='delete_requested'&&(l.metadata?.status||'pending')==='pending');
+ return json(res,200,{ok:true,data:{actorRole:actor.role,users:list,audit:auditLogs,pendingDeleteRequests,stats:{users:list.length,admins:list.filter(u=>u.role!=='user').length,expenses:(expenses||[]).length,cards:(cards||[]).length,totalSpent:list.reduce((s,u)=>s+u.metrics.totalSpent,0)}}});
 }
 
 export default async function handler(req,res){
@@ -84,17 +86,46 @@ export default async function handler(req,res){
   }
 
   if(action==='delete-user'){
-   if(actor.role!=='owner')return json(res,403,{ok:false,error:'A exclusão de usuários exige confirmação do proprietário da aplicação.'});
    const userId=String(req.body?.userId||''),confirmEmail=String(req.body?.confirmEmail||'').trim().toLowerCase();
    if(!userId)return json(res,400,{ok:false,error:'Usuário inválido.'});
    if(userId===actor.user.id)return json(res,400,{ok:false,error:'Você não pode excluir sua própria conta.'});
    const [{data:target},{data:{user:targetUser},error:getError}]=await Promise.all([admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle(),admin.auth.admin.getUserById(userId)]);
    if(getError||!targetUser)return json(res,404,{ok:false,error:'Usuário não encontrado.'});
    if(target?.role==='owner')return json(res,400,{ok:false,error:'A conta do proprietário não pode ser excluída.'});
-   if(confirmEmail!==String(targetUser.email||'').trim().toLowerCase())return json(res,400,{ok:false,error:'Confirmação inválida. Digite exatamente o e-mail do usuário para excluir.'});
-   await audit(actor,'delete_user',userId,targetUser.email,{role:target?.role||'user',confirmedByOwner:true});
+   if(actor.role==='owner'){
+    if(confirmEmail!==String(targetUser.email||'').trim().toLowerCase())return json(res,400,{ok:false,error:'Confirmação inválida. Digite exatamente o e-mail do usuário para excluir.'});
+    await audit(actor,'delete_user',userId,targetUser.email,{role:target?.role||'user',confirmedByOwner:true});
+    const {error}=await admin.auth.admin.deleteUser(userId);if(error)return json(res,400,{ok:false,error:`Não foi possível excluir o usuário: ${error.message}`});
+    return json(res,200,{ok:true,data:{status:'deleted'}});
+   }
+   const {data:existing}=await admin.from('admin_audit_logs').select('id').eq('action','delete_requested').eq('target_user_id',userId).contains('metadata',{status:'pending'}).limit(1).maybeSingle();
+   if(existing)return json(res,409,{ok:false,error:'Já existe uma solicitação de exclusão pendente para este usuário.'});
+   const requestId=await audit(actor,'delete_requested',userId,targetUser.email,{status:'pending',role:target?.role||'user',requesterEmail:actor.user.email,requestedAt:new Date().toISOString()});
+   return json(res,200,{ok:true,data:{status:'pending',requestId}});
+  }
+
+  if(action==='resolve-delete-request'){
+   if(actor.role!=='owner')return json(res,403,{ok:false,error:'Somente o proprietário pode aprovar ou recusar solicitações de exclusão.'});
+   const requestId=Number(req.body?.requestId),decision=String(req.body?.decision||'');
+   if(!requestId||!['approve','reject'].includes(decision))return json(res,400,{ok:false,error:'Solicitação inválida.'});
+   const {data:reqLog,error:reqError}=await admin.from('admin_audit_logs').select('*').eq('id',requestId).eq('action','delete_requested').maybeSingle();
+   if(reqError||!reqLog)return json(res,404,{ok:false,error:'Solicitação de exclusão não encontrada.'});
+   if((reqLog.metadata?.status||'pending')!=='pending')return json(res,409,{ok:false,error:'Esta solicitação já foi analisada.'});
+   const nextMeta={...(reqLog.metadata||{}),status:decision==='approve'?'approved':'rejected',decidedAt:new Date().toISOString(),decidedBy:actor.user.email};
+   if(decision==='reject'){
+    await admin.from('admin_audit_logs').update({metadata:nextMeta}).eq('id',requestId);
+    await audit(actor,'delete_rejected',reqLog.target_user_id,reqLog.target_email,{requestId,requestedBy:reqLog.actor_id});
+    return json(res,200,{ok:true,data:{status:'rejected'}});
+   }
+   const userId=reqLog.target_user_id;
+   if(!userId)return json(res,404,{ok:false,error:'O usuário desta solicitação não existe mais.'});
+   const [{data:target},{data:{user:targetUser},error:getError}]=await Promise.all([admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle(),admin.auth.admin.getUserById(userId)]);
+   if(getError||!targetUser){await admin.from('admin_audit_logs').update({metadata:{...nextMeta,status:'cancelled',reason:'user_not_found'}}).eq('id',requestId);return json(res,404,{ok:false,error:'O usuário desta solicitação não existe mais.'})}
+   if(target?.role==='owner')return json(res,400,{ok:false,error:'A conta do proprietário não pode ser excluída.'});
    const {error}=await admin.auth.admin.deleteUser(userId);if(error)return json(res,400,{ok:false,error:`Não foi possível excluir o usuário: ${error.message}`});
-   return json(res,200,{ok:true});
+   await admin.from('admin_audit_logs').update({metadata:nextMeta}).eq('id',requestId);
+   await audit(actor,'delete_approved',userId,targetUser.email,{requestId,requestedBy:reqLog.actor_id});
+   return json(res,200,{ok:true,data:{status:'deleted'}});
   }
 
   return json(res,400,{ok:false,error:'Ação administrativa desconhecida.'});
