@@ -1,14 +1,14 @@
-import React,{useMemo,useState} from 'react';
+import React,{useEffect,useMemo,useState} from 'react';
 import {Eye,EyeOff,KeyRound,LogOut,Mail,ShieldCheck,UserRound,X,CheckCircle2} from 'lucide-react';
 import {supabase} from '../lib/supabase';
 import './AccountCenter.css';
 
 const initials=(name,email)=>String(name||email||'U').split(/\s+|@/).filter(Boolean).slice(0,2).map(x=>x[0]?.toUpperCase()).join('')||'U';
 
-export default function AccountCenter({open,onClose,session,privacy,onPrivacyChange}){
- const user=session?.user;
+export default function AccountCenter({open,onClose,user,privacy,onPrivacyChange}){
  const currentName=String(user?.user_metadata?.full_name||user?.user_metadata?.name||'').trim();
  const[name,setName]=useState(currentName),[savingProfile,setSavingProfile]=useState(false),[savingPassword,setSavingPassword]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState('');
+ useEffect(()=>{if(open)setName(currentName)},[open,currentName]);
  const joined=useMemo(()=>user?.created_at?new Date(user.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}):'—',[user?.created_at]);
  if(!open||!user)return null;
  async function saveProfile(e){e.preventDefault();setError('');setMessage('');setSavingProfile(true);const clean=name.trim();const{error}=await supabase.auth.updateUser({data:{...user.user_metadata,full_name:clean}});setSavingProfile(false);if(error){setError(error.message);return}setMessage('Perfil atualizado.');}
