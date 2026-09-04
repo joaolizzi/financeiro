@@ -20,15 +20,15 @@ export default async function handler(req, res) {
     if (!question || typeof question !== 'string' || question.trim().length < 2) {
       return res.status(400).json({ error: 'Digite uma pergunta.' });
     }
-    if(question.length>4000)return res.status(400).json({error:'A pergunta ficou muito longa. Resuma para até 4.000 caracteres.'});
+    if(question.length>6000)return res.status(400).json({error:'A pergunta ficou muito longa. Resuma para até 6.000 caracteres.'});
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'A IA ainda não está configurada no servidor.' });
 
     const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-    const safeContext = JSON.stringify(context || {}).slice(0, 30000);
+    const safeContext = JSON.stringify(context || {}).slice(0, 190000);
 
-    const systemInstruction = `Você é o assistente financeiro pessoal do aplicativo Finanças. Analise SOMENTE os dados fornecidos pelo usuário. Nunca invente valores. Responda em português do Brasil, de forma objetiva, clara e útil. Pode calcular totais, médias, percentuais e comparar dados usando somente as informações fornecidas. Não dê recomendações de investimento específicas nem trate sua resposta como aconselhamento financeiro profissional. Se não houver dados suficientes, diga claramente.`;
+    const systemInstruction = `Você é o assistente financeiro pessoal do aplicativo Finanças. Analise SOMENTE os dados fornecidos pelo usuário e nunca invente valores. Responda em português do Brasil, de forma objetiva, clara e útil. Pode calcular totais, médias, percentuais e comparar dados usando somente as informações fornecidas. Quando houver uma planilha Excel no contexto, considere TODAS as abas fornecidas, inclusive abas com nomes diferentes, cabeçalhos fora do padrão, textos, observações, tabelas e valores. Preserve o máximo de informação útil possível ao transcrever ou resumir. Diferencie claramente o que veio de cada aba e informe quando um trecho tiver sido truncado antes de chegar até você. Não dê recomendações de investimento específicas nem trate sua resposta como aconselhamento financeiro profissional. Se não houver dados suficientes, diga claramente.`;
 
     const input = `DADOS DO USUÁRIO:\n${safeContext}\n\nPERGUNTA:\n${question.trim()}`;
 
