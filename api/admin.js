@@ -84,12 +84,15 @@ export default async function handler(req,res){
   }
 
   if(action==='delete-user'){
-   const userId=String(req.body?.userId||'');if(!userId)return json(res,400,{ok:false,error:'Usuário inválido.'});
+   if(actor.role!=='owner')return json(res,403,{ok:false,error:'A exclusão de usuários exige confirmação do proprietário da aplicação.'});
+   const userId=String(req.body?.userId||''),confirmEmail=String(req.body?.confirmEmail||'').trim().toLowerCase();
+   if(!userId)return json(res,400,{ok:false,error:'Usuário inválido.'});
    if(userId===actor.user.id)return json(res,400,{ok:false,error:'Você não pode excluir sua própria conta.'});
    const [{data:target},{data:{user:targetUser},error:getError}]=await Promise.all([admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle(),admin.auth.admin.getUserById(userId)]);
    if(getError||!targetUser)return json(res,404,{ok:false,error:'Usuário não encontrado.'});
    if(target?.role==='owner')return json(res,400,{ok:false,error:'A conta do proprietário não pode ser excluída.'});
-   await audit(actor,'delete_user',userId,targetUser.email,{role:target?.role||'user'});
+   if(confirmEmail!==String(targetUser.email||'').trim().toLowerCase())return json(res,400,{ok:false,error:'Confirmação inválida. Digite exatamente o e-mail do usuário para excluir.'});
+   await audit(actor,'delete_user',userId,targetUser.email,{role:target?.role||'user',confirmedByOwner:true});
    const {error}=await admin.auth.admin.deleteUser(userId);if(error)return json(res,400,{ok:false,error:`Não foi possível excluir o usuário: ${error.message}`});
    return json(res,200,{ok:true});
   }
