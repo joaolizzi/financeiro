@@ -1,9 +1,9 @@
 /* Premium 3D accents — lightweight, CSS-only */
 @media (hover:hover) and (pointer:fine){
-  .premium-hero{perspective:1400px;transform-style:preserve-3d}
-  .premium-hero::before,.premium-hero::after{content:"";position:absolute;pointer-events:none;z-index:0;transform-style:preserve-3d}
-  .premium-hero::before{width:78px;height:78px;right:34px;top:28px;border-radius:50%;border:10px solid rgba(214,199,161,.16);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 18px 38px rgba(0,0,0,.28),0 0 42px rgba(214,199,161,.08);transform:rotateX(68deg) rotateZ(24deg) translateZ(42px);animation:privateOrbit 8s ease-in-out infinite}
-  .premium-hero::after{width:54px;height:54px;left:48%;bottom:26px;border:1px solid rgba(174,184,255,.22);border-radius:13px;background:linear-gradient(145deg,rgba(174,184,255,.13),rgba(255,255,255,.025));box-shadow:inset 8px 8px 18px rgba(255,255,255,.045),inset -10px -12px 20px rgba(0,0,0,.16),0 20px 42px rgba(0,0,0,.3);transform:rotateX(58deg) rotateY(-28deg) rotateZ(18deg) translateZ(30px);animation:privateCube 7s ease-in-out infinite}
+  .premium-hero{perspective:1500px;transform-style:preserve-3d}
+  .premium-hero::before,.premium-hero::after{position:absolute;pointer-events:none;z-index:0;transform-style:preserve-3d}
+  .premium-hero::before{content:"R$";left:45.5%;top:38px;width:96px;height:96px;display:grid;place-items:center;border:3px solid rgba(104,82,38,.72);border-radius:50%;background:radial-gradient(circle at 31% 24%,#fff7d8 0 5%,#e9d89b 18%,#b99a58 47%,#725528 74%,#d9c37f 100%);color:#433316;font:900 27px/1 system-ui,sans-serif;letter-spacing:-2px;text-shadow:0 1px rgba(255,255,255,.55),0 3px 4px rgba(62,43,11,.34);box-shadow:inset 0 0 0 5px rgba(255,247,211,.16),inset 0 0 0 8px rgba(83,61,25,.25),inset 9px 6px 18px rgba(255,255,255,.2),inset -10px -12px 22px rgba(49,34,10,.3),0 24px 42px rgba(0,0,0,.34),0 0 54px rgba(214,199,161,.12);transform:rotateX(13deg) rotateY(-24deg) rotateZ(-8deg) translateZ(54px);animation:privateCoin 8.5s cubic-bezier(.45,.05,.55,.95) infinite}
+  .premium-hero::after{content:"";left:43.2%;top:48px;width:142px;height:78px;border:1px solid rgba(214,199,161,.2);border-left-color:rgba(245,231,190,.5);border-right-color:rgba(174,184,255,.2);border-radius:50%;box-shadow:0 0 26px rgba(214,199,161,.06),inset 0 0 18px rgba(174,184,255,.04);transform:rotateX(71deg) rotateZ(-14deg) translateZ(28px);animation:privateCoinOrbit 10s linear infinite}
   .premium-copy,.premium-deck-area{position:relative;z-index:1}
   .premium-balance{position:relative;transform-style:preserve-3d;transition:transform .26s ease,filter .26s ease}
   .premium-balance:hover{transform:translateY(-3px) translateZ(24px) rotateX(2deg);filter:drop-shadow(0 18px 24px rgba(0,0,0,.2))}
@@ -18,8 +18,8 @@
   .credit-card-scene{perspective:1200px}
   .credit-card-shell:hover{filter:drop-shadow(0 22px 28px rgba(0,0,0,.28))}
 }
-@keyframes privateOrbit{0%,100%{transform:rotateX(68deg) rotateZ(24deg) translateY(0) translateZ(42px)}50%{transform:rotateX(62deg) rotateZ(42deg) translateY(10px) translateZ(56px)}}
-@keyframes privateCube{0%,100%{transform:rotateX(58deg) rotateY(-28deg) rotateZ(18deg) translateY(0) translateZ(30px)}50%{transform:rotateX(68deg) rotateY(-12deg) rotateZ(32deg) translateY(-8px) translateZ(44px)}}
-@media(max-width:900px){.premium-hero::after{display:none}.premium-hero::before{width:58px;height:58px;right:16px;top:18px;border-width:8px;opacity:.7}}
-@media(max-width:640px){.premium-hero::before{display:none}}
+@keyframes privateCoin{0%,100%{transform:rotateX(13deg) rotateY(-24deg) rotateZ(-8deg) translateY(0) translateZ(54px)}25%{transform:rotateX(8deg) rotateY(8deg) rotateZ(-3deg) translateY(-8px) translateZ(66px)}50%{transform:rotateX(15deg) rotateY(28deg) rotateZ(5deg) translateY(2px) translateZ(58px)}75%{transform:rotateX(10deg) rotateY(-3deg) rotateZ(-4deg) translateY(-6px) translateZ(68px)}}
+@keyframes privateCoinOrbit{from{transform:rotateX(71deg) rotateZ(-14deg) translateZ(28px)}to{transform:rotateX(71deg) rotateZ(346deg) translateZ(28px)}}
+@media(max-width:1050px){.premium-hero::before{left:auto;right:28px;top:24px;width:76px;height:76px;font-size:22px;opacity:.82}.premium-hero::after{display:none}}
+@media(max-width:720px){.premium-hero::before{display:none}}
 @media(prefers-reduced-motion:reduce){.premium-hero::before,.premium-hero::after{animation:none!important}.cinematic-chart,.cinematic-metrics article,.private-brief-grid article,.wealth-panel,.health-shell,.goal,.money-bucket,.credit-overview-item,.premium-balance{transform:none!important;transition:none!important}}
