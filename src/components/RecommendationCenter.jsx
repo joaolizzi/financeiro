@@ -7,13 +7,15 @@ import './RecommendationCenter.css';
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const monthStart=(y,m,delta=0)=>{const d=new Date(Number(y),Number(m)-1+delta,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`};
 const priorityOrder={now:0,watch:1,opportunity:2};
+const clickTab=label=>{const buttons=[...document.querySelectorAll('.app-tabs button')];const button=buttons.find(b=>b.textContent?.trim().toLowerCase().includes(label.toLowerCase()));button?.click();return Boolean(button)};
 
-export default function RecommendationCenter({userId,expenses,income,month,year,onIncome,onTransactions,onPlanning,onInsights,onNewExpense}){
- const[history,setHistory]=useState([]),[loading,setLoading]=useState(true);
- const storageKey=`finance-recommendations-dismissed-${userId}-${year}-${month}`;
+export default function RecommendationCenter({userId:providedUserId,expenses,income,month,year,onIncome,onTransactions,onPlanning,onInsights,onNewExpense}){
+ const[userId,setUserId]=useState(providedUserId||null),[history,setHistory]=useState([]),[loading,setLoading]=useState(true);
+ useEffect(()=>{if(providedUserId){setUserId(providedUserId);return}let alive=true;supabase.auth.getUser().then(({data})=>alive&&setUserId(data?.user?.id||null));return()=>{alive=false}},[providedUserId]);
+ const storageKey=`finance-recommendations-dismissed-${userId||'anon'}-${year}-${month}`;
  const[dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{return[]}});
  useEffect(()=>{setDismissed((()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{return[]}})())},[storageKey]);
- useEffect(()=>{if(!userId)return;let alive=true;(async()=>{setLoading(true);const{data}=await supabase.from('gastos').select('descricao,categoria,valor,data,tipo').eq('user_id',userId).gte('data',monthStart(year,month,-3)).lt('data',monthStart(year,month,0));if(alive){setHistory(data||[]);setLoading(false)}})();return()=>{alive=false}},[userId,month,year]);
+ useEffect(()=>{if(!userId){setLoading(false);return}let alive=true;(async()=>{setLoading(true);const{data}=await supabase.from('gastos').select('descricao,categoria,valor,data,tipo').eq('user_id',userId).gte('data',monthStart(year,month,-3)).lt('data',monthStart(year,month,0));if(alive){setHistory(data||[]);setLoading(false)}})();return()=>{alive=false}},[userId,month,year]);
  const data=useMemo(()=>{
   const total=expenses.reduce((s,e)=>s+Number(e.valor||0),0),fixed=expenses.filter(e=>e.tipo==='fixo').reduce((s,e)=>s+Number(e.valor||0),0),balance=Number(income||0)-total;
   const currentCats={};expenses.forEach(e=>currentCats[e.categoria]=(currentCats[e.categoria]||0)+Number(e.valor||0));
@@ -26,18 +28,25 @@ export default function RecommendationCenter({userId,expenses,income,month,year,
   const fixedPct=income>0?fixed/Number(income)*100:0;
   return{total,fixed,balance,top,anomaly,safeDaily,fixedPct,current,remainingDays,historyMonths:monthMaps.length};
  },[expenses,income,history,month,year]);
+ const actions=useMemo(()=>({
+  income:onIncome||(()=>clickTab('Lançamentos')),
+  transactions:onTransactions||(()=>clickTab('Lançamentos')),
+  planning:onPlanning||(()=>clickTab('Planejamento')),
+  insights:onInsights||(()=>clickTab('Análises')),
+  newExpense:onNewExpense||(()=>clickTab('Lançamentos'))
+ }),[onIncome,onTransactions,onPlanning,onInsights,onNewExpense]);
  const recommendations=useMemo(()=>{
   const r=[];
-  if(!income)r.push({id:'set-income',priority:'now',icon:WalletCards,title:'Defina sua renda do mês',text:'Sem uma renda definida, projeções, limite diário e alertas de orçamento ficam menos precisos.',action:'Definir renda',run:onIncome});
-  if(income>0&&data.balance<0)r.push({id:'negative',priority:'now',icon:AlertTriangle,title:'Revise os gastos agora',text:`O mês está ${money(Math.abs(data.balance))} acima da renda cadastrada. Comece pelos maiores lançamentos.`,action:'Ver lançamentos',run:onTransactions});
-  else if(income>0&&data.current&&data.safeDaily>0)r.push({id:'safe-daily',priority:'watch',icon:Eye,title:`Teto confortável: ${money(data.safeDaily)}/dia`,text:`Mantendo até esse valor médio pelos próximos ${data.remainingDays} dias, você permanece dentro da renda atual.`,action:'Ver análises',run:onInsights,info:`Cálculo: (renda ${money(income)} − gastos registrados ${money(data.total)}) ÷ ${data.remainingDays} dias restantes.`});
-  if(data.anomaly)r.push({id:`anomaly-${data.anomaly.cat}`,priority:'now',icon:AlertTriangle,title:`${data.anomaly.cat} saiu do seu padrão`,text:`Você gastou ${money(data.anomaly.value)} nessa categoria, contra média de ${money(data.anomaly.avg)} nos meses anteriores disponíveis.`,action:'Investigar',run:onTransactions,info:`Comparação do total atual de ${data.anomaly.cat} com a média dessa mesma categoria em ${data.historyMonths} mês(es) anteriores com dados.`});
-  if(data.fixedPct>=50)r.push({id:'fixed-high',priority:'watch',icon:Target,title:'Custos fixos estão pesando',text:`Gastos fixos consomem ${data.fixedPct.toFixed(0)}% da renda. Vale revisar recorrências e assinaturas.`,action:'Revisar planejamento',run:onPlanning,info:`Cálculo: gastos marcados como fixos ÷ renda do mês × 100.`});
-  if(data.top&&data.total>0&&data.top[1]/data.total>=.35)r.push({id:`top-${data.top[0]}`,priority:'opportunity',icon:Lightbulb,title:`Oportunidade em ${data.top[0]}`,text:`Essa categoria concentra ${(data.top[1]/data.total*100).toFixed(0)}% dos seus gastos. Uma redução pequena aqui tem impacto maior no mês.`,action:'Ver lançamentos',run:onTransactions,info:'Participação = total da categoria ÷ total de gastos do mês × 100.'});
-  if(!expenses.length)r.push({id:'first-expense',priority:'opportunity',icon:Sparkles,title:'Comece registrando os gastos',text:'Com alguns lançamentos, o Finanças consegue gerar recomendações personalizadas e detectar padrões.',action:'Novo gasto',run:onNewExpense});
-  if(!r.length)r.push({id:'stable',priority:'opportunity',icon:CheckCircle2,title:'Seu mês está equilibrado',text:'Nenhuma ação urgente foi detectada. Continue registrando os gastos para manter as recomendações atualizadas.',action:'Abrir análises',run:onInsights});
+  if(!income)r.push({id:'set-income',priority:'now',icon:WalletCards,title:'Defina sua renda do mês',text:'Sem uma renda definida, projeções, limite diário e alertas de orçamento ficam menos precisos.',action:'Ir para renda',run:actions.income});
+  if(income>0&&data.balance<0)r.push({id:'negative',priority:'now',icon:AlertTriangle,title:'Revise os gastos agora',text:`O mês está ${money(Math.abs(data.balance))} acima da renda cadastrada. Comece pelos maiores lançamentos.`,action:'Ver lançamentos',run:actions.transactions});
+  else if(income>0&&data.current&&data.safeDaily>0)r.push({id:'safe-daily',priority:'watch',icon:Eye,title:`Teto confortável: ${money(data.safeDaily)}/dia`,text:`Mantendo até esse valor médio pelos próximos ${data.remainingDays} dias, você permanece dentro da renda atual.`,action:'Ver análises',run:actions.insights,info:`Cálculo: (renda ${money(income)} − gastos registrados ${money(data.total)}) ÷ ${data.remainingDays} dias restantes.`});
+  if(data.anomaly)r.push({id:`anomaly-${data.anomaly.cat}`,priority:'now',icon:AlertTriangle,title:`${data.anomaly.cat} saiu do seu padrão`,text:`Você gastou ${money(data.anomaly.value)} nessa categoria, contra média de ${money(data.anomaly.avg)} nos meses anteriores disponíveis.`,action:'Investigar',run:actions.transactions,info:`Comparação do total atual de ${data.anomaly.cat} com a média dessa mesma categoria em ${data.historyMonths} mês(es) anteriores com dados.`});
+  if(data.fixedPct>=50)r.push({id:'fixed-high',priority:'watch',icon:Target,title:'Custos fixos estão pesando',text:`Gastos fixos consomem ${data.fixedPct.toFixed(0)}% da renda. Vale revisar recorrências e assinaturas.`,action:'Revisar planejamento',run:actions.planning,info:'Cálculo: gastos marcados como fixos ÷ renda do mês × 100.'});
+  if(data.top&&data.total>0&&data.top[1]/data.total>=.35)r.push({id:`top-${data.top[0]}`,priority:'opportunity',icon:Lightbulb,title:`Oportunidade em ${data.top[0]}`,text:`Essa categoria concentra ${(data.top[1]/data.total*100).toFixed(0)}% dos seus gastos. Uma redução pequena aqui tem impacto maior no mês.`,action:'Ver lançamentos',run:actions.transactions,info:'Participação = total da categoria ÷ total de gastos do mês × 100.'});
+  if(!expenses.length)r.push({id:'first-expense',priority:'opportunity',icon:Sparkles,title:'Comece registrando os gastos',text:'Com alguns lançamentos, o Finanças consegue gerar recomendações personalizadas e detectar padrões.',action:'Abrir lançamentos',run:actions.newExpense});
+  if(!r.length)r.push({id:'stable',priority:'opportunity',icon:CheckCircle2,title:'Seu mês está equilibrado',text:'Nenhuma ação urgente foi detectada. Continue registrando os gastos para manter as recomendações atualizadas.',action:'Abrir análises',run:actions.insights});
   return r.filter(x=>!dismissed.includes(x.id)).sort((a,b)=>priorityOrder[a.priority]-priorityOrder[b.priority]).slice(0,5);
- },[data,income,expenses.length,dismissed,onIncome,onTransactions,onPlanning,onInsights,onNewExpense]);
+ },[data,income,expenses.length,dismissed,actions]);
  function dismiss(id){const next=[...dismissed,id];setDismissed(next);localStorage.setItem(storageKey,JSON.stringify(next))}
  const labels={now:'FAÇA AGORA',watch:'OBSERVE',opportunity:'OPORTUNIDADE'};
  if(loading)return <section className="panel recommendation-center"><div className="recommendation-loading">Montando recomendações pessoais...</div></section>;
