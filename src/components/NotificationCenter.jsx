@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {Bell,AlertTriangle,CheckCircle2,Target,Wallet,TrendingUp,X,CreditCard,CalendarClock,Gauge,ShieldAlert,ReceiptText} from 'lucide-react';
+import {Bell,CheckCircle2,Target,Wallet,TrendingUp,X,CreditCard,CalendarClock,Gauge,ShieldAlert,ReceiptText} from 'lucide-react';
 import {supabase} from '../lib/supabase';
 import './NotificationCenter.css';
 
@@ -8,13 +8,14 @@ const median=values=>{const a=values.filter(v=>Number.isFinite(v)&&v>0).sort((x,
 const daysUntilDay=day=>{const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),max=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),d=Math.min(Math.max(Number(day||1),1),max);let target=new Date(now.getFullYear(),now.getMonth(),d);if(target<today){const nextMax=new Date(now.getFullYear(),now.getMonth()+2,0).getDate();target=new Date(now.getFullYear(),now.getMonth()+1,Math.min(d,nextMax))}return Math.ceil((target-today)/86400000)};
 
 export default function NotificationCenter({open,onClose,expenses,income}){
- const[extra,setExtra]=useState({cards:[],limits:[],budget:0,subscriptions:[]}),[loading,setLoading]=useState(false);
- useEffect(()=>{if(!open)return;let alive=true;async function load(){setLoading(true);const{data:{user}}=await supabase.auth.getUser();if(!user){if(alive)setLoading(false);return}const now=new Date(),month=now.getMonth()+1,year=now.getFullYear();const[c,l,b,s]=await Promise.all([
+ const[extra,setExtra]=useState({cards:[],limits:[],budget:0,subscriptions:[]}),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState('');
+ const period=useMemo(()=>{const first=expenses?.[0]?.data;if(first){const d=new Date(`${first}T12:00:00`);if(!Number.isNaN(d.getTime()))return{month:d.getMonth()+1,year:d.getFullYear()}}const now=new Date();return{month:now.getMonth()+1,year:now.getFullYear()}},[expenses]);
+ useEffect(()=>{if(!open)return;let alive=true;async function load(){setLoading(true);setLoadError('');try{const{data:{user}}=await supabase.auth.getUser();if(!user){if(alive)setLoading(false);return}const[c,l,b,s]=await Promise.all([
   supabase.from('credit_cards').select('id,nome,apelido,dia_vencimento,limite').eq('user_id',user.id),
   supabase.from('finance_limits').select('id,categoria,valor').eq('user_id',user.id),
-  supabase.from('finance_monthly_budgets').select('valor').eq('user_id',user.id).eq('mes',month).eq('ano',year).maybeSingle(),
+  supabase.from('finance_monthly_budgets').select('valor').eq('user_id',user.id).eq('mes',period.month).eq('ano',period.year).maybeSingle(),
   supabase.from('finance_subscriptions').select('id,nome,valor,dia,ativo').eq('user_id',user.id).eq('ativo',true)
- ]);if(!alive)return;setExtra({cards:c.data||[],limits:l.data||[],budget:Number(b.data?.valor||0),subscriptions:s.data||[]});setLoading(false)}load();return()=>{alive=false}},[open]);
+ ]);if(!alive)return;const firstError=c.error||l.error||b.error||s.error;if(firstError)setLoadError('Algumas fontes não puderam ser carregadas.');setExtra({cards:c.data||[],limits:l.data||[],budget:Number(b.data?.valor||0),subscriptions:s.data||[]})}catch{if(alive)setLoadError('Não foi possível atualizar todos os alertas.')}finally{if(alive)setLoading(false)}}load();return()=>{alive=false}},[open,period.month,period.year]);
  const items=useMemo(()=>{
   const total=expenses.reduce((s,e)=>s+Number(e.valor||0),0),fixed=expenses.filter(e=>e.tipo==='fixo').reduce((s,e)=>s+Number(e.valor||0),0),balance=income-total;
   const map={};expenses.forEach(e=>{map[e.categoria]=(map[e.categoria]||0)+Number(e.valor||0)});const top=Object.entries(map).sort((a,b)=>b[1]-a[1])[0],out=[];
@@ -34,5 +35,5 @@ export default function NotificationCenter({open,onClose,expenses,income}){
  },[expenses,income,extra,loading]);
  if(!open)return null;
  const critical=items.filter(x=>x.type==='danger').length,warning=items.filter(x=>x.type==='warning').length;
- return <div className="notify-layer" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><aside className="notify-center"><header><div><span><Bell size={14}/> INTELLIGENCE 2.0</span><h3>Notificações</h3><p>Prioridades do seu financeiro em tempo real.</p></div><button onClick={onClose}><X size={17}/></button></header><div className="notify-summary"><div><strong>{critical}</strong><span>críticos</span></div><div><strong>{warning}</strong><span>atenção</span></div><div><strong>{items.length}</strong><span>ativos</span></div></div><div className="notify-list">{loading&&<div className="notify-loading">Analisando cartões, limites e compromissos...</div>}{items.map((n,i)=>{const Icon=n.icon;return <article className={`notify-item ${n.type}`} key={`${n.title}-${i}`}><div className="notify-icon"><Icon size={16}/></div><div><b>{n.title}</b><span>{n.text}</span></div><em>{n.when||'agora'}</em></article>})}</div><footer><span>{items.length} {items.length===1?'aviso':'avisos'} ativos</span><b>Finanças Intelligence 2.0</b></footer></aside></div>;
+ return <div className="notify-layer" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><aside className="notify-center"><header><div><span><Bell size={14}/> INTELLIGENCE 2.0</span><h3>Notificações</h3><p>Prioridades do seu financeiro em tempo real.</p></div><button onClick={onClose} aria-label="Fechar notificações"><X size={17}/></button></header><div className="notify-summary"><div><strong>{critical}</strong><span>críticos</span></div><div><strong>{warning}</strong><span>atenção</span></div><div><strong>{items.length}</strong><span>ativos</span></div></div><div className="notify-list">{loading&&<div className="notify-loading">Analisando cartões, limites e compromissos...</div>}{loadError&&<div className="notify-loading">{loadError}</div>}{items.map((n,i)=>{const Icon=n.icon;return <article className={`notify-item ${n.type}`} key={`${n.title}-${i}`}><div className="notify-icon"><Icon size={16}/></div><div><b>{n.title}</b><span>{n.text}</span></div><em>{n.when||'agora'}</em></article>})}</div><footer><span>{items.length} {items.length===1?'aviso':'avisos'} ativos</span><b>Intelligence 2.0</b></footer></aside></div>;
 }
