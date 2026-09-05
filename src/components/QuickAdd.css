@@ -7,3 +7,4 @@
 @media(max-height:560px) and (orientation:landscape){.quickadd-backdrop{place-items:center;padding:8px}.quickadd-card{max-height:calc(100dvh - 16px);border-radius:16px;border:1px solid rgba(255,255,255,.1)}.quickadd-card>header{padding-top:14px;padding-bottom:10px}.quickadd-input input,.quickadd-input button{height:48px}.quickadd-input button{width:48px}.quickadd-input{grid-template-columns:minmax(0,1fr) 48px}.quickadd-preview{padding-top:10px;padding-bottom:10px}.quickadd-card>footer{padding-top:12px}}
 @media(pointer:coarse){.quickadd-card button{touch-action:manipulation}.quickadd-card>header>button{min-width:44px;min-height:44px}.quickadd-input button{min-height:52px}}
 @media(prefers-reduced-motion:reduce){.quickadd-backdrop,.quickadd-card{animation:none!important}.quickadd-input button{transition:none!important}}
+/* deployment refresh: 2026-09-05 */
