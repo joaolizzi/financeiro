@@ -27,6 +27,24 @@ async function audit(actor,action,targetUserId=null,targetEmail=null,metadata={}
  return data?.id||null;
 }
 
+const normalizeEmail=value=>String(value||'').trim().toLowerCase();
+async function ensureAllowedEmail(email,createdBy){
+ const normalized=normalizeEmail(email);if(!normalized)return{configured:false,inserted:false};
+ const{data,error}=await admin.from('app_access_emails').select('email').eq('email',normalized).maybeSingle();
+ if(error?.code==='42P01')return{configured:false,inserted:false};
+ if(error)throw error;
+ if(data)return{configured:true,inserted:false};
+ const{error:insertError}=await admin.from('app_access_emails').insert({email:normalized,created_by:createdBy||null});
+ if(insertError?.code==='42P01')return{configured:false,inserted:false};
+ if(insertError)throw insertError;
+ return{configured:true,inserted:true};
+}
+async function removeAllowedEmail(email){
+ const normalized=normalizeEmail(email);if(!normalized)return;
+ const{error}=await admin.from('app_access_emails').delete().eq('email',normalized);
+ if(error&&error.code!=='42P01')throw error;
+}
+
 async function dashboard(res,actor){
  const [{data:users,error:usersError},{data:admins},{data:expenses},{data:cards},{data:incomes},{data:logs,error:logsError}]=await Promise.all([
   admin.auth.admin.listUsers({page:1,perPage:200}),
@@ -56,13 +74,15 @@ export default async function handler(req,res){
   const action=req.body?.action;
 
   if(action==='create-user'){
-   const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||''),makeAdmin=Boolean(req.body?.makeAdmin);
+   const email=normalizeEmail(req.body?.email),password=String(req.body?.password||''),makeAdmin=Boolean(req.body?.makeAdmin);
    if(!email||password.length<6)return json(res,400,{ok:false,error:'Informe e-mail e senha com pelo menos 6 caracteres.'});
+   let allowState={configured:false,inserted:false};
+   try{allowState=await ensureAllowedEmail(email,actor.user.id)}catch(error){return json(res,500,{ok:false,error:`Não foi possível autorizar o e-mail: ${error.message}`})}
    const {data,error}=await admin.auth.admin.createUser({email,password,email_confirm:true});
-   if(error){const msg=String(error.message||'Erro ao criar usuário.');if(/already|registered|exists/i.test(msg))return json(res,409,{ok:false,error:'Já existe uma conta com este e-mail.'});return json(res,400,{ok:false,error:`Supabase Auth: ${msg}`})}
-   if(!data?.user?.id)return json(res,500,{ok:false,error:'O Supabase não retornou o usuário criado.'});
-   if(makeAdmin){const {error:roleError}=await admin.from('app_admins').insert({user_id:data.user.id,role:'admin',created_by:actor.user.id});if(roleError){await admin.auth.admin.deleteUser(data.user.id).catch(()=>{});return json(res,400,{ok:false,error:`Usuário não foi mantido porque a permissão de admin falhou: ${roleError.message}`})}}
-   await audit(actor,'create_user',data.user.id,data.user.email,{role:makeAdmin?'admin':'user'});
+   if(error){const msg=String(error.message||'Erro ao criar usuário.');if(allowState.inserted&&!/already|registered|exists/i.test(msg))await removeAllowedEmail(email).catch(()=>{});if(/already|registered|exists/i.test(msg))return json(res,409,{ok:false,error:'Já existe uma conta com este e-mail.'});return json(res,400,{ok:false,error:`Supabase Auth: ${msg}`})}
+   if(!data?.user?.id){if(allowState.inserted)await removeAllowedEmail(email).catch(()=>{});return json(res,500,{ok:false,error:'O Supabase não retornou o usuário criado.'})}
+   if(makeAdmin){const {error:roleError}=await admin.from('app_admins').insert({user_id:data.user.id,role:'admin',created_by:actor.user.id});if(roleError){await admin.auth.admin.deleteUser(data.user.id).catch(()=>{});if(allowState.inserted)await removeAllowedEmail(email).catch(()=>{});return json(res,400,{ok:false,error:`Usuário não foi mantido porque a permissão de admin falhou: ${roleError.message}`})}}
+   await audit(actor,'create_user',data.user.id,data.user.email,{role:makeAdmin?'admin':'user',privateAccess:allowState.configured});
    return json(res,200,{ok:true,data:{id:data.user.id,email:data.user.email}});
   }
 
@@ -86,16 +106,17 @@ export default async function handler(req,res){
   }
 
   if(action==='delete-user'){
-   const userId=String(req.body?.userId||''),confirmEmail=String(req.body?.confirmEmail||'').trim().toLowerCase();
+   const userId=String(req.body?.userId||''),confirmEmail=normalizeEmail(req.body?.confirmEmail);
    if(!userId)return json(res,400,{ok:false,error:'Usuário inválido.'});
    if(userId===actor.user.id)return json(res,400,{ok:false,error:'Você não pode excluir sua própria conta.'});
    const [{data:target},{data:{user:targetUser},error:getError}]=await Promise.all([admin.from('app_admins').select('role').eq('user_id',userId).maybeSingle(),admin.auth.admin.getUserById(userId)]);
    if(getError||!targetUser)return json(res,404,{ok:false,error:'Usuário não encontrado.'});
    if(target?.role==='owner')return json(res,400,{ok:false,error:'A conta do proprietário não pode ser excluída.'});
    if(actor.role==='owner'){
-    if(confirmEmail!==String(targetUser.email||'').trim().toLowerCase())return json(res,400,{ok:false,error:'Confirmação inválida. Digite exatamente o e-mail do usuário para excluir.'});
+    if(confirmEmail!==normalizeEmail(targetUser.email))return json(res,400,{ok:false,error:'Confirmação inválida. Digite exatamente o e-mail do usuário para excluir.'});
     await audit(actor,'delete_user',userId,targetUser.email,{role:target?.role||'user',confirmedByOwner:true});
     const {error}=await admin.auth.admin.deleteUser(userId);if(error)return json(res,400,{ok:false,error:`Não foi possível excluir o usuário: ${error.message}`});
+    await removeAllowedEmail(targetUser.email).catch(e=>console.error('allowlist:',e.message));
     return json(res,200,{ok:true,data:{status:'deleted'}});
    }
    const {data:existing}=await admin.from('admin_audit_logs').select('id').eq('action','delete_requested').eq('target_user_id',userId).contains('metadata',{status:'pending'}).limit(1).maybeSingle();
@@ -123,6 +144,7 @@ export default async function handler(req,res){
    if(getError||!targetUser){await admin.from('admin_audit_logs').update({metadata:{...nextMeta,status:'cancelled',reason:'user_not_found'}}).eq('id',requestId);return json(res,404,{ok:false,error:'O usuário desta solicitação não existe mais.'})}
    if(target?.role==='owner')return json(res,400,{ok:false,error:'A conta do proprietário não pode ser excluída.'});
    const {error}=await admin.auth.admin.deleteUser(userId);if(error)return json(res,400,{ok:false,error:`Não foi possível excluir o usuário: ${error.message}`});
+   await removeAllowedEmail(targetUser.email).catch(e=>console.error('allowlist:',e.message));
    await admin.from('admin_audit_logs').update({metadata:nextMeta}).eq('id',requestId);
    await audit(actor,'delete_approved',userId,targetUser.email,{requestId,requestedBy:reqLog.actor_id});
    return json(res,200,{ok:true,data:{status:'deleted'}});
