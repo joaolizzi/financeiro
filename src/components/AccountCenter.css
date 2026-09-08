@@ -6,5 +6,11 @@ html.privacy-mode .premium-card-number,html.privacy-mode .credit-card-number{let
 html.privacy-mode .account-readonly span,html.privacy-mode .account-identity>div>span{filter:blur(5px);user-select:none}
 html.privacy-mode input[type="number"]:not(:focus),html.privacy-mode .money-total strong{filter:blur(7px)}
 
+/* Privacy 2.0: cover intelligence, AI/import previews and the newer premium modules too. */
+html.privacy-mode .intelligence-metrics b,html.privacy-mode .intelligence-metrics small,html.privacy-mode .recommendation-title b,html.privacy-mode .recommendation-copy p,html.privacy-mode .monthly-brief small,html.privacy-mode .forecast small,html.privacy-mode .forecast-commitments b,html.privacy-mode .forecast-alerts span,html.privacy-mode .ai-answer-content,html.privacy-mode .ai-action-grid b,html.privacy-mode .ai-action-success,html.privacy-mode .ai-import-table td:nth-child(4) input:not(:focus),html.privacy-mode .ai-import-table td:nth-child(6) input:not(:focus),html.privacy-mode .credit-purchase>div:nth-child(2)>span,html.privacy-mode .credit-card-real-meta span,html.privacy-mode .credit-card-real-footer span,html.privacy-mode .credit-back-grid span,html.privacy-mode .timeline-item b,html.privacy-mode .timeline-item strong,html.privacy-mode .timeline-item small{filter:blur(7px);user-select:none;transition:filter .15s ease}
+html.privacy-mode .account-identity>div>b,html.privacy-mode .account-identity>div>small,html.privacy-mode .account-readonly,html.privacy-mode .admin-user-main small{filter:blur(5px);user-select:none}
+html.privacy-mode .ai-import-table input[type="text"]:not(:focus),html.privacy-mode .ai-import-table input[type="number"]:not(:focus){filter:blur(7px);user-select:none}
+html.privacy-mode .ai-import-table input:focus,html.privacy-mode input[type="number"]:focus{filter:none}
+
 @media(max-width:760px){.account-center{width:100%;padding:18px}.account-backdrop{background:#090d14}}
 @media(max-width:430px){.avatar-grid{grid-template-columns:repeat(4,1fr)}.avatar-photo-actions{grid-template-columns:1fr}.avatar-photo-actions>small{grid-column:1}}
