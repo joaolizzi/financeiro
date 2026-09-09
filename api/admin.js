@@ -46,13 +46,14 @@ async function removeAllowedEmail(email){
 }
 
 async function dashboard(res,actor){
- const [{data:users,error:usersError},{data:admins},{data:expenses},{data:cards},{data:incomes},{data:logs,error:logsError}]=await Promise.all([
+ const [{data:users,error:usersError},{data:admins},{data:expenses},{data:cards},{data:incomes},{data:logs,error:logsError},{data:signupRequests,error:signupError}]=await Promise.all([
   admin.auth.admin.listUsers({page:1,perPage:200}),
   admin.from('app_admins').select('user_id,role,created_at').order('created_at',{ascending:true}),
   admin.from('gastos').select('user_id,valor'),
   admin.from('credit_cards').select('user_id'),
   admin.from('rendas').select('user_id,valor'),
-  admin.from('admin_audit_logs').select('id,actor_id,action,target_user_id,target_email,metadata,created_at').order('created_at',{ascending:false}).limit(60)
+  admin.from('admin_audit_logs').select('id,actor_id,action,target_user_id,target_email,metadata,created_at').order('created_at',{ascending:false}).limit(60),
+  admin.from('finance_signup_requests').select('user_id,email,status,requested_at,decided_at,decided_by').order('requested_at',{ascending:false}).limit(100)
  ]);
  if(usersError)return json(res,500,{ok:false,error:usersError.message});
  const adminMap=new Map((admins||[]).map(a=>[a.user_id,a])),expenseMap=new Map(),cardMap=new Map(),incomeMap=new Map();
@@ -63,7 +64,9 @@ async function dashboard(res,actor){
  const list=base.map(u=>{const ex=expenseMap.get(u.id)||{count:0,total:0};return{id:u.id,email:u.email,created_at:u.created_at,last_sign_in_at:u.last_sign_in_at,confirmed_at:u.email_confirmed_at||u.confirmed_at,role:adminMap.get(u.id)?.role||'user',banned_until:u.banned_until||null,metrics:{expenses:ex.count,totalSpent:ex.total,cards:cardMap.get(u.id)||0,income:incomeMap.get(u.id)||0}}});
  const auditLogs=logsError?[]:(logs||[]).map(l=>({...l,actor_email:emailMap.get(l.actor_id)||l.metadata?.requesterEmail||'Usuário removido'}));
  const pendingDeleteRequests=auditLogs.filter(l=>l.action==='delete_requested'&&(l.metadata?.status||'pending')==='pending');
- return json(res,200,{ok:true,data:{actorRole:actor.role,users:list,audit:auditLogs,pendingDeleteRequests,stats:{users:list.length,admins:list.filter(u=>u.role!=='user').length,expenses:(expenses||[]).length,cards:(cards||[]).length,totalSpent:list.reduce((s,u)=>s+u.metrics.totalSpent,0)}}});
+ const requests=signupError?.code==='42P01'?[]:(signupRequests||[]);
+ const pendingSignupRequests=requests.filter(r=>r.status==='pending');
+ return json(res,200,{ok:true,data:{actorRole:actor.role,users:list,audit:auditLogs,pendingDeleteRequests,signupRequests:requests,pendingSignupRequests,stats:{users:list.length,admins:list.filter(u=>u.role!=='user').length,expenses:(expenses||[]).length,cards:(cards||[]).length,totalSpent:list.reduce((s,u)=>s+u.metrics.totalSpent,0),pendingSignups:pendingSignupRequests.length}}});
 }
 
 export default async function handler(req,res){
@@ -78,12 +81,38 @@ export default async function handler(req,res){
    if(!email||password.length<6)return json(res,400,{ok:false,error:'Informe e-mail e senha com pelo menos 6 caracteres.'});
    let allowState={configured:false,inserted:false};
    try{allowState=await ensureAllowedEmail(email,actor.user.id)}catch(error){return json(res,500,{ok:false,error:`Não foi possível autorizar o e-mail: ${error.message}`})}
-   const {data,error}=await admin.auth.admin.createUser({email,password,email_confirm:true});
+   const {data,error}=await admin.auth.admin.createUser({email,password,email_confirm:true,user_metadata:{access_status:'approved'}});
    if(error){const msg=String(error.message||'Erro ao criar usuário.');if(allowState.inserted&&!/already|registered|exists/i.test(msg))await removeAllowedEmail(email).catch(()=>{});if(/already|registered|exists/i.test(msg))return json(res,409,{ok:false,error:'Já existe uma conta com este e-mail.'});return json(res,400,{ok:false,error:`Supabase Auth: ${msg}`})}
    if(!data?.user?.id){if(allowState.inserted)await removeAllowedEmail(email).catch(()=>{});return json(res,500,{ok:false,error:'O Supabase não retornou o usuário criado.'})}
    if(makeAdmin){const {error:roleError}=await admin.from('app_admins').insert({user_id:data.user.id,role:'admin',created_by:actor.user.id});if(roleError){await admin.auth.admin.deleteUser(data.user.id).catch(()=>{});if(allowState.inserted)await removeAllowedEmail(email).catch(()=>{});return json(res,400,{ok:false,error:`Usuário não foi mantido porque a permissão de admin falhou: ${roleError.message}`})}}
    await audit(actor,'create_user',data.user.id,data.user.email,{role:makeAdmin?'admin':'user',privateAccess:allowState.configured});
    return json(res,200,{ok:true,data:{id:data.user.id,email:data.user.email}});
+  }
+
+  if(action==='resolve-signup-request'){
+   const userId=String(req.body?.userId||''),decision=String(req.body?.decision||'');
+   if(!userId||!['approve','reject'].includes(decision))return json(res,400,{ok:false,error:'Solicitação inválida.'});
+   const{data:reqRow,error:reqError}=await admin.from('finance_signup_requests').select('*').eq('user_id',userId).maybeSingle();
+   if(reqError||!reqRow)return json(res,404,{ok:false,error:'Solicitação de acesso não encontrada.'});
+   if(reqRow.status!=='pending')return json(res,409,{ok:false,error:'Esta solicitação já foi analisada.'});
+   const{data:{user:targetUser},error:getError}=await admin.auth.admin.getUserById(userId);
+   if(getError||!targetUser)return json(res,404,{ok:false,error:'A conta desta solicitação não existe mais.'});
+   if(decision==='approve'){
+    await ensureAllowedEmail(reqRow.email,actor.user.id);
+    const{error:updateError}=await admin.auth.admin.updateUserById(userId,{ban_duration:'none',user_metadata:{...(targetUser.user_metadata||{}),access_status:'approved'}});
+    if(updateError)return json(res,400,{ok:false,error:`Não foi possível liberar o acesso: ${updateError.message}`});
+    const{error:requestError}=await admin.from('finance_signup_requests').update({status:'approved',decided_at:new Date().toISOString(),decided_by:actor.user.id}).eq('user_id',userId);
+    if(requestError)return json(res,400,{ok:false,error:requestError.message});
+    await audit(actor,'signup_approved',userId,reqRow.email,{requestedAt:reqRow.requested_at});
+    return json(res,200,{ok:true,data:{status:'approved'}});
+   }
+   const{error:requestError}=await admin.from('finance_signup_requests').update({status:'rejected',decided_at:new Date().toISOString(),decided_by:actor.user.id}).eq('user_id',userId);
+   if(requestError)return json(res,400,{ok:false,error:requestError.message});
+   await audit(actor,'signup_rejected',userId,reqRow.email,{requestedAt:reqRow.requested_at});
+   const{error:deleteError}=await admin.auth.admin.deleteUser(userId);
+   if(deleteError)return json(res,400,{ok:false,error:`Solicitação recusada, mas não foi possível remover a conta: ${deleteError.message}`});
+   await removeAllowedEmail(reqRow.email).catch(e=>console.error('allowlist:',e.message));
+   return json(res,200,{ok:true,data:{status:'rejected'}});
   }
 
   if(action==='set-role'){
@@ -146,7 +175,7 @@ export default async function handler(req,res){
    const {error}=await admin.auth.admin.deleteUser(userId);if(error)return json(res,400,{ok:false,error:`Não foi possível excluir o usuário: ${error.message}`});
    await removeAllowedEmail(targetUser.email).catch(e=>console.error('allowlist:',e.message));
    await admin.from('admin_audit_logs').update({metadata:nextMeta}).eq('id',requestId);
-   await audit(actor,'delete_approved',userId,targetUser.email,{requestId,requestedBy:reqLog.actor_id});
+   await audit(actor,'delete_approved',null,targetUser.email,{requestId,requestedBy:reqLog.actor_id,deletedUserId:userId});
    return json(res,200,{ok:true,data:{status:'deleted'}});
   }
 
