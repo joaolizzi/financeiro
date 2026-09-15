@@ -34,6 +34,10 @@ export function expenseAlreadyRegistered(expenses,name,value){
  });
 }
 
+function commitmentKey(name,value){
+ return `${normalizeFinanceText(name)}:${number(value).toFixed(2)}`;
+}
+
 export function cardCycleMonthIndex(date,closingDay){
  if(!date)return null;
  const d=new Date(`${date}T12:00:00`);
@@ -67,19 +71,25 @@ export function calculatePendingCommitments({expenses=[],recurring=[],subscripti
  const period=getPeriodState(year,month,now);
  if(period.past)return{...period,pendingRecurring:0,pendingSubscriptions:0,pendingCards:0,totalCommitments:0};
  const already=(name,value)=>expenseAlreadyRegistered(expenses,name,value);
+ const counted=new Set();
+ const addOnce=(name,value)=>{
+  const amount=number(value);
+  if(amount<=0||already(name,amount))return 0;
+  const key=commitmentKey(name,amount);
+  if(counted.has(key))return 0;
+  counted.add(key);
+  return amount;
+ };
  const pendingRecurring=(recurring||[])
   .filter(item=>item?.ativo!==false)
   .filter(item=>item.last_confirmed_month!==period.key)
-  .filter(item=>!already(item.descricao,item.valor))
-  .reduce((sum,item)=>sum+number(item.valor),0);
+  .reduce((sum,item)=>sum+addOnce(item.descricao,item.valor),0);
  const pendingSubscriptions=(subscriptions||[])
   .filter(item=>item?.ativo!==false)
-  .filter(item=>!already(item.nome,item.valor))
-  .reduce((sum,item)=>sum+number(item.valor),0);
+  .reduce((sum,item)=>sum+addOnce(item.nome,item.valor),0);
  const cardInvoice=calculateCardInstallmentsForMonth({cards,purchases,month,year});
  const pendingCards=cardInvoice.items
-  .filter(item=>!already(item.purchase.descricao,item.installment))
-  .reduce((sum,item)=>sum+item.installment,0);
+  .reduce((sum,item)=>sum+addOnce(item.purchase.descricao,item.installment),0);
  return{...period,pendingRecurring,pendingSubscriptions,pendingCards,totalCommitments:pendingRecurring+pendingSubscriptions+pendingCards};
 }
 
