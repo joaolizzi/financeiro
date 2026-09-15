@@ -29,7 +29,7 @@ export function expenseAlreadyRegistered(expenses,name,value){
  if(!target)return false;
  return (expenses||[]).some(expense=>{
   const current=normalizeFinanceText(expense.descricao);
-  const textMatches=current===target||current.includes(target)||target.includes(current);
+  const textMatches=current===target||(target.length>=5&&current.includes(target))||(current.length>=5&&target.includes(current));
   return textMatches&&sameMoney(expense.valor,value);
  });
 }
@@ -44,6 +44,25 @@ export function cardCycleMonthIndex(date,closingDay){
  return financeMonthIndex(cycle.getFullYear(),cycle.getMonth()+1);
 }
 
+export function calculateCardInstallmentsForMonth({cards=[],purchases=[],month,year}){
+ const cardsById=Object.fromEntries((cards||[]).map(card=>[String(card.id),card]));
+ const target=financeMonthIndex(year,month);
+ const items=[];
+ for(const purchase of purchases||[]){
+  const card=cardsById[String(purchase.card_id)];
+  if(!card)continue;
+  const start=cardCycleMonthIndex(purchase.data_compra,card.dia_fechamento);
+  if(start===null)continue;
+  const count=Math.max(1,Math.trunc(number(purchase.parcelas)||1));
+  if(target<start||target>=start+count)continue;
+  const installment=number(purchase.valor_total)/count;
+  items.push({purchase,card,installment,installmentNumber:target-start+1,installments:count});
+ }
+ const byCard={};
+ items.forEach(item=>{const key=String(item.card.id);byCard[key]=(byCard[key]||0)+item.installment});
+ return{total:items.reduce((sum,item)=>sum+item.installment,0),items,byCard};
+}
+
 export function calculatePendingCommitments({expenses=[],recurring=[],subscriptions=[],cards=[],purchases=[],month,year,now=new Date()}){
  const period=getPeriodState(year,month,now);
  if(period.past)return{...period,pendingRecurring:0,pendingSubscriptions:0,pendingCards:0,totalCommitments:0};
@@ -51,25 +70,16 @@ export function calculatePendingCommitments({expenses=[],recurring=[],subscripti
  const pendingRecurring=(recurring||[])
   .filter(item=>item?.ativo!==false)
   .filter(item=>item.last_confirmed_month!==period.key)
-  .filter(item=>Number(item.dia||1)>=period.todayDay)
   .filter(item=>!already(item.descricao,item.valor))
   .reduce((sum,item)=>sum+number(item.valor),0);
  const pendingSubscriptions=(subscriptions||[])
   .filter(item=>item?.ativo!==false)
-  .filter(item=>Number(item.dia||1)>=period.todayDay)
   .filter(item=>!already(item.nome,item.valor))
   .reduce((sum,item)=>sum+number(item.valor),0);
- const cardsById=Object.fromEntries((cards||[]).map(card=>[card.id,card]));
- const target=financeMonthIndex(year,month);
- const pendingCards=(purchases||[]).reduce((sum,purchase)=>{
-  const card=cardsById[purchase.card_id]||{};
-  const start=cardCycleMonthIndex(purchase.data_compra,card.dia_fechamento);
-  if(start===null)return sum;
-  const count=Math.max(1,Number(purchase.parcelas||1));
-  const installment=number(purchase.valor_total)/count;
-  if(target<start||target>=start+count||already(purchase.descricao,installment))return sum;
-  return sum+installment;
- },0);
+ const cardInvoice=calculateCardInstallmentsForMonth({cards,purchases,month,year});
+ const pendingCards=cardInvoice.items
+  .filter(item=>!already(item.purchase.descricao,item.installment))
+  .reduce((sum,item)=>sum+item.installment,0);
  return{...period,pendingRecurring,pendingSubscriptions,pendingCards,totalCommitments:pendingRecurring+pendingSubscriptions+pendingCards};
 }
 
