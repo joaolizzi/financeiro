@@ -7,6 +7,7 @@ import DashboardCharts from './DashboardCharts';
 import MonthlyClosing from './MonthlyClosing';
 import FinancialForecast from './FinancialForecast';
 import CalcInfo from './CalcInfo';
+import './FinanceInsights.css';
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 export default function FinanceInsights({expenses,income,userId,month,year}){
  const[resolvedUserId,setResolvedUserId]=useState(userId||null),[previous,setPrevious]=useState([]);
