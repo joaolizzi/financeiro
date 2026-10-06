@@ -38,7 +38,7 @@ function Login({onLogin}){
    if(!clean){setError('Informe seu e-mail para recuperar a senha.');return}
    setLoading(true);
    try{
-    const response=await fetch('/api/password-reset-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:clean})});
+    const response=await fetch('/api/signup-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'password-reset',email:clean})});
     const data=await response.json().catch(()=>({}));
     if(!response.ok||!data.ok)throw new Error(data.error||'Não foi possível enviar o link de recuperação.');
     setSuccess(data.message||'Se esse e-mail estiver cadastrado, você receberá um link para criar uma nova senha.');
