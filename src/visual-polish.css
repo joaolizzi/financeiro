@@ -176,3 +176,154 @@ label{color:#818da0!important;font-weight:700}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
+
+
+/* Professional consistency pass — 2026-10 */
+:root{
+  --ui-control-h:42px;
+  --ui-control-radius:10px;
+  --ui-line:rgba(255,255,255,.075);
+  --ui-line-hover:rgba(174,184,255,.16);
+  --ui-surface:#0d141f;
+  --ui-surface-hover:#141d2a;
+  --ui-muted:#7d899d;
+  --ui-text:#edf1f7;
+}
+
+/* Keep the application shell isolated from headers used inside cards/modals. */
+.app>header{
+  min-width:0;
+}
+.app>header .brand,.app>header .header-actions{min-width:0}
+
+/* One interaction language across old and new screens. */
+.primary,.secondary,.card-action,.account-primary,.account-signout,.admin-view,
+.admin-action-role,.admin-action-block,.admin-action-delete,.admin-delete-final,
+.approve,.reject,.goal-deposit,.recurring-confirm,.command-import-confirm,
+.premium-main-action,.premium-ghost-action,.focus-open,.login-text-button{
+  min-height:var(--ui-control-h);
+  border-radius:var(--ui-control-radius)!important;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.1;
+  transition:background .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease,opacity .16s ease;
+}
+
+.secondary,.card-action,.admin-view,.admin-action-role,.goal-deposit,.recurring-confirm,
+.premium-ghost-action,.focus-open,.login-text-button{
+  border:1px solid var(--ui-line)!important;
+  background:rgba(255,255,255,.025)!important;
+  color:#cfd6e2!important;
+}
+.secondary:hover,.card-action:hover,.admin-view:hover,.admin-action-role:hover,
+.goal-deposit:hover,.recurring-confirm:hover,.premium-ghost-action:hover,
+.focus-open:hover,.login-text-button:hover{
+  border-color:var(--ui-line-hover)!important;
+  background:rgba(255,255,255,.05)!important;
+  color:#fff!important;
+}
+
+.account-signout,.admin-action-block,.admin-action-delete,.admin-delete-final,.reject,.danger{
+  border-color:rgba(232,167,173,.14)!important;
+  background:rgba(232,167,173,.055)!important;
+  color:#e8a7ad!important;
+}
+.account-signout:hover,.admin-action-block:hover,.admin-action-delete:hover,
+.admin-delete-final:hover,.reject:hover,.danger:hover{
+  border-color:rgba(232,167,173,.24)!important;
+  background:rgba(232,167,173,.09)!important;
+}
+
+.approve{
+  border-color:rgba(143,214,174,.14)!important;
+  background:rgba(143,214,174,.055)!important;
+  color:#9cdbb7!important;
+}
+.approve:hover{border-color:rgba(143,214,174,.24)!important;background:rgba(143,214,174,.09)!important}
+
+/* Icon-only controls should look related everywhere. */
+.icon-btn,.close,.delete,.edit-expense,.duplicate-expense,.admin-refresh,.admin-detail-close,
+.alert-dismiss,.recommendation-dismiss,.focus-close,.dashboard-customizer header>button{
+  border-radius:9px!important;
+  transition:background .15s ease,border-color .15s ease,color .15s ease,transform .15s ease,opacity .15s ease;
+}
+.icon-btn:focus-visible,.close:focus-visible,.delete:focus-visible,.edit-expense:focus-visible,
+.duplicate-expense:focus-visible,.admin-refresh:focus-visible,.admin-detail-close:focus-visible,
+.alert-dismiss:focus-visible,.recommendation-dismiss:focus-visible,.focus-close:focus-visible,
+button:focus-visible{
+  outline:2px solid rgba(142,155,255,.85);
+  outline-offset:2px;
+}
+
+/* Normalize field sizing across account, admin, cards and legacy forms. */
+input,select,textarea{
+  min-height:42px;
+  font-size:13px;
+}
+textarea{padding:11px 12px}
+.modal label,.login-card label,.account-section form label,.admin-create label:not(.admin-check),
+.goal-form label,.credit-modal label{
+  font-size:10px!important;
+  letter-spacing:.02em;
+}
+
+/* Raise overly tiny functional copy without losing the compact premium look. */
+.panel-head p,.top p,.account-head p,.admin-hero p,.dashboard-customizer p,
+.control-empty small,.credit-empty small,.recommendation-copy p{
+  font-size:max(10px,.72rem)!important;
+}
+.admin-section-head span,.admin-detail-kicker,.account-head>div>span,
+.account-section-title span,.dashboard-customizer header span,.recommendation-kicker,
+.premium-kicker,.focus-list-title{
+  font-size:9px!important;
+}
+.admin-create label:not(.admin-check),.admin-user-main small,.audit-row small,
+.account-section-title span,.account-identity small,.dashboard-customizer-list small{
+  font-size:9px!important;
+}
+
+/* Make all main feature surfaces feel like one product. */
+.admin-hero,.admin-create,.admin-users,.admin-audit,.account-center,.dashboard-customizer,
+.command-center,.quickadd-card,.recommendation-center,.timeline-panel,.credit-section,
+.goals-panel,.control-panel,.health-shell,.wealth-panel,.monthly-brief,.alerts-panel{
+  border-color:var(--vp-line)!important;
+}
+.admin-create,.admin-users,.admin-audit,.recommendation-item,.goal,.control-item,
+.credit-projection-item,.account-section,.dashboard-customizer-list article{
+  box-shadow:inset 0 1px rgba(255,255,255,.018);
+}
+
+/* Keep section headings aligned and avoid the "old screen" spacing mismatch. */
+.panel-head,.admin-section-head,.account-section-title{
+  gap:10px;
+}
+.panel-head h2,.admin-section-head h3,.account-section-title b{
+  color:var(--ui-text);
+  letter-spacing:-.025em;
+}
+.admin-section-head,.panel-head{
+  min-height:34px;
+}
+
+/* Tables and lists use the same density. */
+.sheet tbody td,.expense,.admin-user,.audit-row,.control-item,.credit-purchase{
+  font-size:12px;
+}
+.expense-actions{gap:5px}
+
+/* Mobile controls remain touch-friendly, but text no longer collapses to unreadable sizes. */
+@media(max-width:620px){
+  .primary,.secondary,.card-action,.account-primary,.account-signout,.admin-view,
+  .approve,.reject,.goal-deposit,.recurring-confirm,.command-import-confirm,
+  .premium-main-action,.premium-ghost-action,.focus-open,.login-text-button{
+    min-height:44px;
+    font-size:11px;
+  }
+  .app-tabs button{font-size:9px!important}
+  .panel-head p,.top p{font-size:10px!important}
+  input,select,textarea{font-size:16px}
+}
+
+@media(max-width:360px){
+  .app-tabs button{font-size:8.5px!important}
+}
