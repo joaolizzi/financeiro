@@ -29,14 +29,91 @@ const pages={overview:{title:'Visão geral',desc:'Seu mês financeiro em um só 
 
 function HeaderAvatar({user}){const meta=user?.user_metadata||{},googlePhoto=meta.avatar_url||meta.picture,customPhoto=meta.avatar_custom_url,mode=meta.avatar_mode||(customPhoto?'custom':googlePhoto?'google':'emoji'),photo=mode==='custom'?customPhoto:mode==='google'?googlePhoto:null;if(photo)return <span className="header-avatar has-photo" style={{'--avatar-color':meta.avatar_color||'#6f7cff'}}><img src={photo} alt="Avatar" referrerPolicy="no-referrer"/></span>;return <span className="header-avatar" style={{'--avatar-color':meta.avatar_color||'#6f7cff'}}>{meta.avatar_emoji||userInitials(user)}</span>}
 
-function Login({onLogin}){const[email,setEmail]=useState(''),[pass,setPass]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[loading,setLoading]=useState(false),[mode,setMode]=useState('login');async function submit(e){e.preventDefault();if(loading)return;setError('');setSuccess('');setLoading(true);if(mode==='signup'){try{const r=await fetch('/api/signup-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim(),password:pass})});const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||'Não foi possível solicitar a conta.');setSuccess(j.message||'Solicitação enviada. Aguarde a aprovação do administrador.');setPass('');setMode('login')}catch(err){setError(err.message||'Não foi possível solicitar a conta.')}finally{setLoading(false)}return}const{data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password:pass});setLoading(false);if(error){const msg=String(error.message||'');setError(/banned|ban/i.test(msg)?'Sua conta ainda está aguardando aprovação do administrador.':msg.includes('Email not confirmed')?'Seu e-mail ainda não foi confirmado.':'E-mail ou senha inválidos.');return}onLogin(data.session)}return <main className="login-page"><section className="login-card"><div className="brand"><div className="logo"><Wallet size={22}/></div><span>Finanças</span></div><div className="lock"><LockKeyhole size={24}/></div><h1>{mode==='login'?'Bem-vindo de volta':'Criar sua conta'}</h1><p>{mode==='login'?'Acesse seu controle financeiro.':'Crie seu acesso. Um administrador precisa aprovar antes do primeiro login.'}</p><div className="login-mode-switch"><button type="button" className={mode==='login'?'active':''} onClick={()=>{setMode('login');setError('');setSuccess('')}}>Entrar</button><button type="button" className={mode==='signup'?'active':''} onClick={()=>{setMode('signup');setError('');setSuccess('')}}>Criar conta</button></div><form onSubmit={submit}><label>E-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Seu e-mail" required autoComplete="email"/><label>Senha</label><input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder={mode==='signup'?'Crie uma senha de pelo menos 6 caracteres':'Sua senha'} required minLength={mode==='signup'?6:undefined} autoComplete={mode==='signup'?'new-password':'current-password'}/>{error&&<div className="error">{error}</div>}{success&&<div className="login-success">{success}</div>}<button className="primary" disabled={loading}>{loading?<><LoaderCircle size={17} className="spin"/> {mode==='signup'?'Enviando...':'Entrando...'}</>:mode==='signup'?'Solicitar acesso':'Entrar'}</button></form><small>{mode==='signup'?'Cadastro sujeito à aprovação do administrador':'Área privada • acesso pessoal'}</small></section></main>}
+function Login({onLogin}){
+ const[email,setEmail]=useState(''),[pass,setPass]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[loading,setLoading]=useState(false),[mode,setMode]=useState('login');
+ async function submit(e){
+  e.preventDefault();if(loading)return;setError('');setSuccess('');
+  if(mode==='forgot'){
+   const clean=email.trim();
+   if(!clean){setError('Informe seu e-mail para recuperar a senha.');return}
+   setLoading(true);
+   const{error}=await supabase.auth.resetPasswordForEmail(clean);
+   setLoading(false);
+   if(error){setError(error.message||'Não foi possível enviar o e-mail de recuperação.');return}
+   setSuccess('Se esse e-mail estiver cadastrado, você receberá um link para criar uma nova senha.');
+   return;
+  }
+  setLoading(true);
+  if(mode==='signup'){
+   try{
+    const r=await fetch('/api/signup-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.trim(),password:pass})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok)throw new Error(j.error||'Não foi possível solicitar a conta.');
+    setSuccess(j.message||'Solicitação enviada. Aguarde a aprovação do administrador.');setPass('');setMode('login')
+   }catch(err){setError(err.message||'Não foi possível solicitar a conta.')}finally{setLoading(false)}
+   return;
+  }
+  const{data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password:pass});
+  setLoading(false);
+  if(error){
+   const msg=String(error.message||'');
+   setError(/banned|ban/i.test(msg)?'Sua conta ainda está aguardando aprovação do administrador.':msg.includes('Email not confirmed')?'Seu e-mail ainda não foi confirmado.':'E-mail ou senha inválidos.');
+   return;
+  }
+  onLogin(data.session);
+ }
+ const title=mode==='login'?'Bem-vindo de volta':mode==='signup'?'Criar sua conta':'Recuperar senha';
+ const description=mode==='login'?'Acesse seu controle financeiro.':mode==='signup'?'Crie seu acesso. Um administrador precisa aprovar antes do primeiro login.':'Digite seu e-mail e enviaremos um link seguro para você criar uma nova senha.';
+ return <main className="login-page"><section className="login-card">
+  <div className="brand"><div className="logo"><Wallet size={22}/></div><span>Finanças</span></div>
+  <div className="lock"><LockKeyhole size={24}/></div>
+  <h1>{title}</h1><p>{description}</p>
+  {mode!=='forgot'&&<div className="login-mode-switch"><button type="button" className={mode==='login'?'active':''} onClick={()=>{setMode('login');setError('');setSuccess('')}}>Entrar</button><button type="button" className={mode==='signup'?'active':''} onClick={()=>{setMode('signup');setError('');setSuccess('')}}>Criar conta</button></div>}
+  <form onSubmit={submit}>
+   <label>E-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Seu e-mail" required autoComplete="email"/>
+   {mode!=='forgot'&&<><label>Senha</label><input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder={mode==='signup'?'Crie uma senha de pelo menos 6 caracteres':'Sua senha'} required minLength={mode==='signup'?6:undefined} autoComplete={mode==='signup'?'new-password':'current-password'}/></>}
+   {error&&<div className="error">{error}</div>}{success&&<div className="login-success">{success}</div>}
+   <button className="primary" disabled={loading}>{loading?<><LoaderCircle size={17} className="spin"/> {mode==='signup'?'Enviando...':mode==='forgot'?'Enviando link...':'Entrando...'}</>:mode==='signup'?'Solicitar acesso':mode==='forgot'?'Enviar link de recuperação':'Entrar'}</button>
+  </form>
+  {mode==='login'&&<button type="button" className="login-text-button" onClick={()=>{setMode('forgot');setError('');setSuccess('');setPass('')}}>Esqueci minha senha</button>}
+  {mode==='forgot'&&<button type="button" className="login-text-button" onClick={()=>{setMode('login');setError('');setSuccess('')}}>Voltar para entrar</button>}
+  <small>{mode==='signup'?'Cadastro sujeito à aprovação do administrador':mode==='forgot'?'O link de recuperação expira por segurança':'Área privada • acesso pessoal'}</small>
+ </section></main>
+}
+
+function PasswordRecovery({onDone}){
+ const[password,setPassword]=useState(''),[confirm,setConfirm]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+ async function submit(e){
+  e.preventDefault();if(loading)return;setError('');
+  if(password.length<6){setError('A senha precisa ter pelo menos 6 caracteres.');return}
+  if(password!==confirm){setError('As senhas não são iguais.');return}
+  setLoading(true);
+  const{error}=await supabase.auth.updateUser({password});
+  if(error){setLoading(false);setError(error.message||'Não foi possível alterar a senha.');return}
+  await supabase.auth.signOut();
+  setLoading(false);
+  onDone?.();
+ }
+ return <main className="login-page"><section className="login-card">
+  <div className="brand"><div className="logo"><Wallet size={22}/></div><span>Finanças</span></div>
+  <div className="lock"><LockKeyhole size={24}/></div>
+  <h1>Crie uma nova senha</h1><p>Escolha uma senha nova para sua conta. Ela precisa ter pelo menos 6 caracteres.</p>
+  <form onSubmit={submit}>
+   <label>Nova senha</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength="6" required autoComplete="new-password" placeholder="Nova senha"/>
+   <label>Confirmar nova senha</label><input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} minLength="6" required autoComplete="new-password" placeholder="Repita a nova senha"/>
+   {error&&<div className="error">{error}</div>}
+   <button className="primary" disabled={loading}>{loading?<><LoaderCircle size={17} className="spin"/> Salvando...</>:'Salvar nova senha'}</button>
+  </form>
+  <small>Depois da alteração, entre novamente com a nova senha.</small>
+ </section></main>
+}
 
 function App(){
- const[session,setSession]=useState(undefined),[expenses,setExpenses]=useState([]),[income,setIncome]=useState(0),[showExpense,setShowExpense]=useState(false),[editingExpense,setEditingExpense]=useState(null),[undoExpense,setUndoExpense]=useState(null),[showIncome,setShowIncome]=useState(false),[commandOpen,setCommandOpen]=useState(false),[quickAddOpen,setQuickAddOpen]=useState(false),[notifyOpen,setNotifyOpen]=useState(false),[accountOpen,setAccountOpen]=useState(false),[privacy,setPrivacy]=useState(false),[adminAccess,setAdminAccess]=useState(false),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('');
+ const[session,setSession]=useState(undefined),[expenses,setExpenses]=useState([]),[income,setIncome]=useState(0),[showExpense,setShowExpense]=useState(false),[editingExpense,setEditingExpense]=useState(null),[undoExpense,setUndoExpense]=useState(null),[showIncome,setShowIncome]=useState(false),[commandOpen,setCommandOpen]=useState(false),[quickAddOpen,setQuickAddOpen]=useState(false),[notifyOpen,setNotifyOpen]=useState(false),[accountOpen,setAccountOpen]=useState(false),[recoveryMode,setRecoveryMode]=useState(()=>window.location.hash.includes('type=recovery')||new URLSearchParams(window.location.search).get('type')==='recovery'),[privacy,setPrivacy]=useState(false),[adminAccess,setAdminAccess]=useState(false),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('');
  const now=new Date(),[month,setMonth]=useState(now.getMonth()+1),[year,setYear]=useState(now.getFullYear()),[view,setView]=useState('overview'),[query,setQuery]=useState(''),[category,setCategory]=useState('Todas');
  const loadSeq=useRef(0);
 
- useEffect(()=>{let active=true;supabase.auth.getSession().then(({data})=>{if(active){setSession(data.session);setLoading(false)}});const{data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{setSession(s);setLoading(false)});return()=>{active=false;subscription.unsubscribe()}},[]);
+ useEffect(()=>{let active=true;supabase.auth.getSession().then(({data})=>{if(active){setSession(data.session);setLoading(false)}});const{data:{subscription}}=supabase.auth.onAuthStateChange((event,s)=>{if(event==='PASSWORD_RECOVERY')setRecoveryMode(true);setSession(s);setLoading(false)});return()=>{active=false;subscription.unsubscribe()}},[]);
  useEffect(()=>{if(session?.user)loadData();else{setExpenses([]);setIncome(0);setAdminAccess(false);setAccountOpen(false);setPrivacy(false);document.documentElement.classList.remove('privacy-mode')}},[session?.user?.id,month,year]);
  useEffect(()=>{if(!session?.user)return;const key=`finance-private-workspace-${session.user.id}-privacy`;const enabled=localStorage.getItem(key)==='1';setPrivacy(enabled)},[session?.user?.id]);
  useEffect(()=>{if(!session?.user)return;const key=`finance-private-workspace-${session.user.id}-privacy`;localStorage.setItem(key,privacy?'1':'0');document.documentElement.classList.toggle('privacy-mode',privacy);return()=>document.documentElement.classList.remove('privacy-mode')},[privacy,session?.user?.id]);
@@ -57,6 +134,7 @@ function App(){
  async function saveIncome(e){e.preventDefault();if(saving)return;setSaving(true);const f=new FormData(e.currentTarget),value=Number(f.get('income'));const{data,error}=await supabase.from('rendas').upsert({user_id:session.user.id,valor:value,mes:month,ano:year},{onConflict:'user_id,mes,ano'}).select().single();setSaving(false);if(error){setError(`Erro ao salvar renda: ${error.message}`);return}setIncome(Number(data.valor));setShowIncome(false)}
 
  if(loading)return <main className="login-page"><LoaderCircle size={28} className="spin"/></main>;
+ if(recoveryMode)return <PasswordRecovery onDone={()=>{setRecoveryMode(false);window.history.replaceState({},document.title,window.location.pathname)}}/>;
  if(!session)return <Login onLogin={setSession}/>;
  const navItems=[['overview','Visão geral',LayoutDashboard],['timeline','Timeline',Clock3],['transactions','Lançamentos',ReceiptText],['cards','Cartões',CreditCard],['planning','Planejamento',Target],['insights','Análises',Sparkles],...(adminAccess?[['admin','Admin',ShieldCheck]]:[])];
  const expenseButtons=x=><div className="expense-actions"><button className="duplicate-expense" disabled={saving} onClick={()=>duplicateExpense(x)} title="Duplicar gasto"><Copy size={14}/></button><button className="edit-expense" disabled={saving} onClick={()=>setEditingExpense(x)} title="Editar gasto"><Pencil size={15}/></button><button className="delete" disabled={saving} onClick={()=>deleteExpense(x.id)} title="Excluir gasto"><Trash2 size={16}/></button></div>;
