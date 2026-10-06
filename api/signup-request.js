@@ -2,7 +2,9 @@ import {createClient} from '@supabase/supabase-js';
 
 const url=process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL;
 const service=process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY;
+const publicKey=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const admin=url&&service?createClient(url,service,{auth:{persistSession:false}}):null;
+const auth=url&&publicKey?createClient(url,publicKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}):null;
 const json=(res,status,data)=>res.status(status).json(data);
 const normalizeEmail=value=>String(value||'').trim().toLowerCase();
 
@@ -19,6 +21,31 @@ async function findUserByEmail(email){
 
 export default async function handler(req,res){
  if(req.method!=='POST')return json(res,405,{ok:false,error:'Método não permitido.'});
+
+ if(req.body?.action==='password-reset'){
+  if(!auth)return json(res,500,{ok:false,error:'Recuperação de senha temporariamente indisponível.'});
+  const email=normalizeEmail(req.body?.email);
+  if(!/^\S+@\S+\.\S+$/.test(email))return json(res,400,{ok:false,error:'Informe um e-mail válido.'});
+  try{
+   const origin=String(req.headers.origin||'').replace(/\/$/,'');
+   let result=await auth.auth.resetPasswordForEmail(email,origin?{redirectTo:\`${origin}/\`}:undefined);
+   if(result.error&&/redirect|allow|url/i.test(String(result.error.message||''))){
+    result=await auth.auth.resetPasswordForEmail(email);
+   }
+   if(result.error){
+    console.error('password reset:',result.error.message);
+    const message=/rate|limit|too many/i.test(String(result.error.message||''))
+     ?'Muitas tentativas de recuperação. Aguarde alguns minutos e tente novamente.'
+     :'Não foi possível enviar o link de recuperação agora.';
+    return json(res,400,{ok:false,error:message});
+   }
+   return json(res,200,{ok:true,message:'Se esse e-mail estiver cadastrado, você receberá um link para criar uma nova senha.'});
+  }catch(error){
+   console.error('password reset request:',error);
+   return json(res,500,{ok:false,error:'Não foi possível enviar o link de recuperação agora.'});
+  }
+ }
+
  if(!url||!service)return json(res,500,{ok:false,error:'Cadastro temporariamente indisponível.'});
  const email=normalizeEmail(req.body?.email),password=String(req.body?.password||'');
  if(!/^\S+@\S+\.\S+$/.test(email))return json(res,400,{ok:false,error:'Informe um e-mail válido.'});
