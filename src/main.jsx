@@ -37,10 +37,16 @@ function Login({onLogin}){
    const clean=email.trim();
    if(!clean){setError('Informe seu e-mail para recuperar a senha.');return}
    setLoading(true);
-   const{error}=await supabase.auth.resetPasswordForEmail(clean);
-   setLoading(false);
-   if(error){setError(error.message||'Não foi possível enviar o e-mail de recuperação.');return}
-   setSuccess('Se esse e-mail estiver cadastrado, você receberá um link para criar uma nova senha.');
+   try{
+    const response=await fetch('/api/password-reset-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:clean})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.ok)throw new Error(data.error||'Não foi possível enviar o link de recuperação.');
+    setSuccess(data.message||'Se esse e-mail estiver cadastrado, você receberá um link para criar uma nova senha.');
+   }catch(err){
+    setError(err.message||'Não foi possível enviar o link de recuperação agora.');
+   }finally{
+    setLoading(false);
+   }
    return;
   }
   setLoading(true);
