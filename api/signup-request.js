@@ -28,7 +28,7 @@ export default async function handler(req,res){
   if(!/^\S+@\S+\.\S+$/.test(email))return json(res,400,{ok:false,error:'Informe um e-mail válido.'});
   try{
    const origin=String(req.headers.origin||'').replace(/\/$/,'');
-   let result=await auth.auth.resetPasswordForEmail(email,origin?{redirectTo:\`${origin}/\`}:undefined);
+   let result=await auth.auth.resetPasswordForEmail(email,origin?{redirectTo:origin+'/'}:undefined);
    if(result.error&&/redirect|allow|url/i.test(String(result.error.message||''))){
     result=await auth.auth.resetPasswordForEmail(email);
    }
